@@ -5,10 +5,28 @@
 
 char txBuffer_bulkStr[MAX_MESSAGE_SIZE];
 
+/*
+0. 函数核心为读取控制器参数、组织为数组
+
+1. 尝试初始化SD卡连接(SD.begin())
+
+2. 初始化计数器和索引变量，用于跟踪处理进度
+   设置失败计数器 failed2open 来统计无法打开的文件数量
+
+3. 使用循环遍历12个关节（从左踝关节到右臂2）
+   根据配置信息判断哪些关节被使用以及它们的默认控制器设置
+   对每个有效的关节和控制器组合，从SD卡读取相应的CSV配置文件
+
+4. 从CSV文件中读取第五行数据（通常是参数设置行）
+   解析关节名称、控制器名称等信息
+   将解析后的参数按规范存储到二维数组 stringArray 中
+
+5. 调用 create_csv_message() 将所有参数整理成字符串消息格式
+*/
 void ctrl_param_array_gen(uint8_t* config_to_send) {
-	//Begin SD card
+	//SD.begin(SD_SELECT) 初始化SD卡模块与微控制器之间的通信接口
 	if (!SD.begin(SD_SELECT)) {
-			while (1)
+			while (1)	//这里的while似乎缺少了大括号(这样只控制只控制紧接着while(1)的下一句)，导致初始化连接SD卡失败后无法如预期进入打印错误信息的循环
 			
 			if (Serial)
 			{
@@ -18,24 +36,26 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
 			}
 	}
 	
+	//输出最大消息大小常量的值到串口监视器
 	// Serial.print("\nconst size_t MAX_MESSAGE_SIZE = ");
 	// Serial.print(MAX_MESSAGE_SIZE);
 	
-	uint8_t csvCount;
-	uint8_t row_idx = 0;
-	failed2open = 0;
+	uint8_t csvCount;	//存储当前处理的关节类型的控制器数量
+	uint8_t row_idx = 0;	//存储当前处理的CSV文件的行索引
+	failed2open = 0;	//用于统计未能成功打开的CSV配置文件数量
 	
-	//Loop through joints
+	//遍历所有可能的关节类型(12种)，并根据配置信息确定哪些关节需要处理，然后为这些关节读取所有相关的控制器参数文件
 	for (int i_joint = 1; i_joint < 13; i_joint++) {
 		switch (i_joint)
 		{
 		case 1://left ankle
+		//先判断踝关节是否被禁用, 再判断外骨骼配置是否支持左踝关节(可能支持双踝关节或者只支持做踝关节)
 		if ((config_to_send[config_defs::exo_ankle_default_controller_idx] > 1) && ((((uint8_t)config_defs::exo_side::bilateral == config_to_send[config_defs::exo_side_idx])) || (((uint8_t)config_defs::exo_side::left == config_to_send[config_defs::exo_side_idx]))))
-		{
+		{	//确定控制器数量
 			csvCount = (uint8_t)config_defs::ankle_controllers::Count;
 		}
 		else {
-			continue;
+			continue;	//若不满足条件,跳过此关节,检查下一个
 		}
 			break;
 		case 2://right ankle
@@ -145,20 +165,24 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
 		//Serial.print(csvCount);
 		
 		
-		int start_ctrl = 2; // Skip disabled controller for all joints.
+		int start_ctrl = 2; // Skip disabled controller for all joints.	跳过跳过ID=1的 disabled 控制器
 		for (int i_ctrl = start_ctrl; i_ctrl < csvCount; i_ctrl++) {
-			bool csvExists;
-			std::string filename;
-			char joint_id_string;
+			bool csvExists;		//检查是否存在对应的CSV参数文件
+			std::string filename;	//存储控制器参数文件的路径名
+			char joint_id_string;	//用于存储关节ID字符串
 			switch (i_joint)
 			{
 			case 1://left ankle
 				//joint_id_string_l = (uint8_t)config_defs::joint_id::left_ankle;
-				joint_id_val = (uint8_t)config_defs::joint_id::left_ankle;
+				joint_id_val = (uint8_t)config_defs::joint_id::left_ankle;	//为每个关节设置唯一的数值ID
 				strncpy(jointName, "Ankle(L)", 10); 
 				jointName[9] = '\0';
+				// 检查当前控制器是否有对应的参数文件
+				// 使用 count() 方法检查是否存在指定控制器ID的CSV文件映射, count()函数是检查map()容器中对应映射的key值是否存在 (这个key值是定义在parseIni.h文件枚举中的控制器ID)
+				// 如果存在，则获取文件路径
 				csvExists = controller_parameter_filenames::ankle.count(i_ctrl);
 				if (csvExists) {
+					//将对应控制器所在的文件路径存储在filename变量中
 					filename = controller_parameter_filenames::ankle[i_ctrl];
 				}
 				break;
@@ -279,7 +303,7 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
 
 				const char* filename_char = filename.c_str();
 				
-				// Call the function to read and parse the fifth row
+				// 调用函数读取并解析第五行数据 Call the function to read and parse the fifth row	
 				int columnsRead = readAndParseFifthRow(filename_char, stringArray, MAX_COLUMNS, MAX_STRING_LENGTH, row_idx, i_ctrl);
 				
 

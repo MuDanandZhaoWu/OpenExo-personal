@@ -48,9 +48,11 @@
         }
     }
 
-
+    //函数重载,两耳同名函数通过参数个数不同，参数类型不同和不同类型参数的顺序不同自动自动区别和调用最匹配的函数
+    //函数实现为第二个ini_parser函数的简单接口
     void ini_parser(uint8_t* config_to_send)
-    {
+    {   //"/config.ini"的文件寻址是专门针对SD卡内的文件, 遵照Unix文件系统的路径约定"/config.ini" 中的"/"表示SD卡的根目录
+        //注意"/config.ini" 不是内存地址，而是文件路径字符串
         ini_parser("/config.ini", config_to_send);   
     }
 

@@ -176,7 +176,7 @@ namespace config_defs
 		Count //Leave this at the end of the enum class. Count can be used to get the total number of controllers defined for this joint.
     };
         
-    enum class ankle_controllers : uint8_t  //Ankle Controller IDs
+    enum class ankle_controllers : uint8_t  //Ankle Controller IDs 踝关节控制器类型定义，每一种类型代表一种特定的控制策略或算法
     {
         disabled = 1, 
         zero_torque = 2, 
@@ -191,7 +191,7 @@ namespace config_defs
 		pjmc_plus = 11,
         spline = 12,
 		
-		Count //Leave this at the end of the enum class. Count can be used to get the total number of controllers defined for this joint.
+		Count /// 请将此项保留在枚举类的末尾。Count 可用于获取为此关节定义的控制器总数。
     };
 
     enum class elbow_controllers : uint8_t  //Elbow Controller IDs

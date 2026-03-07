@@ -8,10 +8,10 @@
 #if defined(ARDUINO_TEENSY36) | defined(ARDUINO_TEENSY41)
 
 //UNCOMMENT TO UTILIZE
-//#define INCLUDE_FLEXCAN_DEBUG   //Flag to print CAN debugging messages for the motors
-//#define MAKE_PLOTS              //Flag to serial plot
-//#define MAIN_DEBUG              //Flag to print Arduino debugging statements
-//#define HEADLESS                //Flag to be used when there is no app access
+//#define INCLUDE_FLEXCAN_DEBUG   //Flag to print CAN debugging messages for the motors(用于打印电机CAN调试消息的标志)
+//#define MAKE_PLOTS              //Flag to serial plot(用于串行绘图的标志)
+//#define MAIN_DEBUG              //Flag to print Arduino debugging statements(用于打印Arduino调试语句的标志)
+//#define HEADLESS                //Flag to be used when there is no app access(启用HEADLESS模式可能意味着设备将按照SD卡上的配置文件独立运行，而不需要与PC端的图形应用程序进行实时通信)
 
 //Standard Libraries
 #include <stdint.h>
@@ -41,7 +41,7 @@
 #include "src/Logger.h"
 #include "src/PiLogger.h"
 
-//Array used to store config information
+//Array used to store config information(用于存储配置信息的数组, number_of_keys在ParseIni.h文件中定义为71)
 namespace config_info
 {
     uint8_t (config_to_send)[ini_config::number_of_keys];
@@ -49,9 +49,10 @@ namespace config_info
 
 void setup()
 {
-    analogReadResolution(12);
+    analogReadResolution(12);       //将analogRead()的返回值范围从0-1023变为0-4095
     
     Serial.begin(115200);
+    //延迟以等待串口稳定
     //delay(500);
 
     #ifdef SIMPLE_DEBUG
@@ -62,12 +63,13 @@ void setup()
         Serial.print("\nFor a list of the controller and joint ids, check the controller enum classes in Parseini.h (Lines 127-185)");
     #endif
 
-    //Get the config information from the SD card (calls function in ParseIni).
+    //从SD卡获取配置信息（调用ParseIni中的函数）
     ini_parser(config_info::config_to_send);              
     
 	//Debugging ListCtrlParams
 	long initialTime = millis();
-	ctrl_param_array_gen(config_info::config_to_send);
+    //读取控制器参数、组织为数组
+	ctrl_param_array_gen(config_info::config_to_send);  //传入参数为config_info命名空间中的config_to_send数组
 	create_plotting_titles(config_info::config_to_send);
 	send_bulk_char();
 	long time_spent = millis() - initialTime;

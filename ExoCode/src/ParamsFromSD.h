@@ -1,7 +1,7 @@
 /**
  * @file ParamsFromSD.h
  *
- * @brief Declares the functions to pull controller parameters from the SD card and defines the mapping to the parameter files.
+ * @brief 声明用于从 SD 卡读取控制器参数的函数，并定义参数文件的映射关系 Declares the functions to pull controller parameters from the SD card and defines the mapping to the parameter files.
  * 
  * @author P. Stegall 
  * @date Jan. 2022
@@ -32,13 +32,13 @@
      */
     namespace param_error
     {
-        const uint8_t num_joint_ids = 5;                            /**< Number of bits the joint type ids need */
+        const uint8_t num_joint_ids = 5;                            /**< Number of bits the joint type ids need 关节类型id 所需的位数 */
         const uint8_t SD_not_found_idx = num_joint_ids;             /**< Error when SD card isn't present */
         const uint8_t file_not_found_idx = SD_not_found_idx + 1;    /**< Error when file is not found on the SD card */
     }
     
     /**
-     * @brief Namespace with map to between controller and file location
+     * @brief 用于建立控制器与文件路径映射关系的命名空间，建立电机控制器与文件路径的映射关系    Namespace with map to between controller and file location
      */
     namespace controller_parameter_filenames
     {
@@ -106,22 +106,22 @@
     };
     
     /**
-     * @brief Prints name of error message
+     * @brief 打印SD卡读取时的错误信息  Prints name of error message
      *
      * @param error identifier
      */
     void print_param_error_message(uint8_t error_type);
     
     /**
-     * @brief Reads files from SD card and sets them to the appropriate controller parameters in the exo_data object
-     * see ParseIni for details on inputs
+     * @brief 从SD卡读取文件并将其设置到exo_data对象中对应的控制器参数
+     * 有关输入参数的详细说明请参考ParseIni
      * 
-     * @param joint_id : the joint id 
-     * @param controller_id : the controller id 
-     * @param set_num : parameter set to read from the SD card
-     * @param exo_data : location to put the data 
+     * @param joint_id 关节ID 
+     * @param controller_id 控制器ID 
+     * @param set_num 要从SD卡读取的参数集编号
+     * @param exo_data 数据存储的目标位置 
      * 
-     * @return : Error int.
+     * @return 错误码（整数类型）
      */
     uint8_t set_controller_params(uint8_t joint_id, uint8_t controller_id, uint8_t set_num, ExoData* exo_data);
 
