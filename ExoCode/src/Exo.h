@@ -1,7 +1,7 @@
 /**
  * @file Exo.h
  *
- * @brief 声明 Exo 类，Exo类是外骨骼控制逻辑的主要实现，系统所有其他组件都将归属于该类中     Declares exo class that all the other components will live in. 
+ * @brief Declares exo class that all the other components will live in. 
  * 
  * @author P. Stegall 
  * @date Jan. 2022
@@ -12,8 +12,6 @@
 #define Exo_h
 
 //Arduino compiles everything in the src folder even if not included so it causes an error for the nano if this is not included
-// Arduino 会编译 src 文件夹下的所有文件，即便这些文件没有被其他文件 #include 包含。
-// 因此，如果不加上这段条件编译，代码在 Arduino Nano 上编译时就会报错。
 #if defined(ARDUINO_TEENSY36)  || defined(ARDUINO_TEENSY41)
 
 #include "Arduino.h"
@@ -37,6 +35,12 @@ class Exo
          * @brief Reads motor data from each motor used on that side and stores the values
          * 
          * @return true if the code ran, ie tiiming was satisfied
+         * @return false 
+         */
+        /**
+         * @brief 读取该侧使用的每个电机的数据并存储这些值
+         * 
+         * @return true 如果代码执行了，即定时满足了
          * @return false 
          */
         bool run();  

@@ -43,9 +43,9 @@
  */
 
 typedef struct {
-    float context;
-    float old_time = -1;
-    int k_index;
+    float context;          // 上下文标识符，用于唯一标识一个计时器实例
+    float old_time = -1;    // 上一次记录的时间，初始值为 -1，表示尚未记录时间
+    int k_index;            // 计时器在 tickers 容器中的索引，用于快速定位
 } ticker_t;
 
 class Time_Helper

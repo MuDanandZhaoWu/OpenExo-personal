@@ -223,7 +223,7 @@ void loop()
                 //Waits until calibration is done to set actual controller
                 //exo_data.left_side.hip.controller.controller中, 前一个controller是ControllerData类的一个对象, 后一个ControllerData是ControllerData类中的成员变量
                 exo_data.left_side.hip.controller.controller = (uint8_t)config_defs::hip_controllers::zero_torque;  //  以零扭矩模式启动    Start in zero torque
-                exo.left_side._hip.set_controller(exo_data.left_side.hip.controller.controller);                    //  随后设置为目标控制器, 代码将zero torque控制器应用在左髋关节的电机上    Then sets to desired controller                  
+                exo.left_side.get_hip().set_controller(exo_data.left_side.hip.controller.controller);                    //  随后设置为目标控制器, 代码将zero torque控制器应用在左髋关节的电机上    Then sets to desired controller                  
                 
             #endif
         }
@@ -249,7 +249,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.right_side.hip.controller.controller = (uint8_t)config_defs::hip_controllers::zero_torque;   //Start in zero torque
-                exo.right_side._hip.set_controller(exo_data.right_side.hip.controller.controller);                    //Then sets to desired controller
+                exo.right_side.get_hip().set_controller(exo_data.right_side.hip.controller.controller);                    //Then sets to desired controller
             
             #endif
         }
@@ -275,7 +275,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.left_side.knee.controller.controller = (uint8_t)config_defs::knee_controllers::zero_torque; //Start in zero torque
-                exo.left_side._knee.set_controller(exo_data.left_side.knee.controller.controller);                    //Then sets to desired controller                  
+                exo.left_side.get_knee().set_controller(exo_data.left_side.knee.controller.controller);                    //Then sets to desired controller                  
                 
             #endif
         }
@@ -301,7 +301,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.right_side.knee.controller.controller = (uint8_t)config_defs::knee_controllers::zero_torque;   //Start in zero torque
-                exo.right_side._knee.set_controller(exo_data.right_side.knee.controller.controller);                    //Then sets to desired controller
+                exo.right_side.get_knee().set_controller(exo_data.right_side.knee.controller.controller);                    //Then sets to desired controller
             
             #endif
         }
@@ -331,7 +331,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.left_side.ankle.controller.controller = (uint8_t)config_defs::ankle_controllers::zero_torque;   //Start in zero torque
-                exo.left_side._ankle.set_controller(exo_data.left_side.ankle.controller.controller);                      //Then sets to desired controller
+                exo.left_side.get_ankle().set_controller(exo_data.left_side.ankle.controller.controller);                      //Then sets to desired controller
                 
             #endif
         }
@@ -357,7 +357,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.right_side.ankle.controller.controller = (uint8_t)config_defs::ankle_controllers::zero_torque;   //Start in zero torque
-                exo.right_side._ankle.set_controller(exo_data.right_side.ankle.controller.controller);                    //Then sets to desired controller
+                exo.right_side.get_ankle().set_controller(exo_data.right_side.ankle.controller.controller);                    //Then sets to desired controller
                 
             #endif
         }
@@ -387,7 +387,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.left_side.elbow.controller.controller = (uint8_t)config_defs::elbow_controllers::zero_torque;    //Start in zero torque
-                exo.left_side._elbow.set_controller(exo_data.left_side.elbow.controller.controller);                      //Then sets to desired controller
+                exo.left_side.get_elbow().set_controller(exo_data.left_side.elbow.controller.controller);                      //Then sets to desired controller
                 
             #endif
         }
@@ -413,7 +413,7 @@ void loop()
                 
                 //Waits until calibration is done to set actual controller
                 exo_data.right_side.elbow.controller.controller = (uint8_t)config_defs::elbow_controllers::zero_torque;   //Start in zero torque
-                exo.right_side._elbow.set_controller(exo_data.right_side.elbow.controller.controller);                    //Then sets to desired controller
+                exo.right_side.get_elbow().set_controller(exo_data.right_side.elbow.controller.controller);                    //Then sets to desired controller
                 
             #endif
         }
@@ -608,7 +608,7 @@ void loop()
             {
                 // 配置各关节的默认控制器(控制器在config.ini文件中定义)     Set the default controller
                 exo_data.left_side.hip.controller.controller = config_info::config_to_send[config_defs::exo_hip_default_controller_idx];
-                exo.left_side._hip.set_controller(exo_data.left_side.hip.controller.controller);
+                exo.left_side.get_hip().set_controller(exo_data.left_side.hip.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Left Hip Controller Set");
@@ -619,7 +619,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.right_side.hip.controller.controller = config_info::config_to_send[config_defs::exo_hip_default_controller_idx];
-                exo.right_side._hip.set_controller(exo_data.right_side.hip.controller.controller); 
+                exo.right_side.get_hip().set_controller(exo_data.right_side.hip.controller.controller); 
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Right Hip Controller Set");
@@ -630,7 +630,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.left_side.knee.controller.controller = config_info::config_to_send[config_defs::exo_knee_default_controller_idx];
-                exo.left_side._knee.set_controller(exo_data.left_side.knee.controller.controller);
+                exo.left_side.get_knee().set_controller(exo_data.left_side.knee.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Left Knee Controller Set");
@@ -641,7 +641,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.right_side.knee.controller.controller = config_info::config_to_send[config_defs::exo_knee_default_controller_idx];
-                exo.right_side._knee.set_controller(exo_data.right_side.knee.controller.controller); 
+                exo.right_side.get_knee().set_controller(exo_data.right_side.knee.controller.controller); 
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Right Knee Controller Set");
@@ -652,7 +652,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.left_side.ankle.controller.controller = config_info::config_to_send[config_defs::exo_ankle_default_controller_idx];
-                exo.left_side._ankle.set_controller(exo_data.left_side.ankle.controller.controller);
+                exo.left_side.get_ankle().set_controller(exo_data.left_side.ankle.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Left Ankle Controller Set");
@@ -663,7 +663,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.right_side.ankle.controller.controller = config_info::config_to_send[config_defs::exo_ankle_default_controller_idx];
-                exo.right_side._ankle.set_controller(exo_data.right_side.ankle.controller.controller);
+                exo.right_side.get_ankle().set_controller(exo_data.right_side.ankle.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Right Ankle Controller Set");
@@ -674,7 +674,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.left_side.elbow.controller.controller = config_info::config_to_send[config_defs::exo_elbow_default_controller_idx];
-                exo.left_side._elbow.set_controller(exo_data.left_side.elbow.controller.controller);
+                exo.left_side.get_elbow().set_controller(exo_data.left_side.elbow.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Left Elbow Controller Set");
@@ -685,7 +685,7 @@ void loop()
             {
                 //Set the default controller
                 exo_data.right_side.elbow.controller.controller = config_info::config_to_send[config_defs::exo_elbow_default_controller_idx];
-                exo.right_side._elbow.set_controller(exo_data.right_side.elbow.controller.controller);
+                exo.right_side.get_elbow().set_controller(exo_data.right_side.elbow.controller.controller);
                 
                 #ifdef MAIN_DEBUG
                     logger::print("Superloop : Right Elbow Controller Set");

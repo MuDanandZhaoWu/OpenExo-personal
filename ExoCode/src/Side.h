@@ -38,6 +38,14 @@ class Side
     public:
         Side(bool is_left, ExoData* exo_data); //Constructor: 
         
+        // 返回常量引用，只读访问
+        const HipJoint& get_hip() const { return _hip; }
+        const KneeJoint& get_knee() const { return _knee; }
+        const AnkleJoint& get_ankle() const { return _ankle; }
+        const ElbowJoint& get_elbow() const{ return _elbow; }
+        const Arm1Joint& get_arm_1() const{ return _arm_1; }
+        const Arm2Joint& get_arm_2() const{ return _arm_2; }
+
         /**
          * @brief Read FSR, calc percent gait, read joint data, send joint commands
          */

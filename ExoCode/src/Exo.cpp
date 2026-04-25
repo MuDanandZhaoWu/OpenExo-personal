@@ -32,11 +32,13 @@ Exo::Exo(ExoData* exo_data)
 , status_led(logic_micro_pins::status_led_r_pin, logic_micro_pins::status_led_g_pin, logic_micro_pins::status_led_b_pin)  //Create the status LED object.
 
 #ifdef USE_SPEED_CHECK
-    speed_check(logic_micro_pins::speed_check_pin)
+    ,speed_check(logic_micro_pins::speed_check_pin)   //speed_check()函数也是构造函数初始化的对象, 在定义了USE_SPEED_CHECK宏时才会被编译
 #endif
 
 {
+    //data指向传入的exo_data指针, 注入式的数据传入
     this->data = exo_data;
+    //调用 ExoData 的 set_default_parameters 方法，为所有关节设置默认参数
     data->set_default_parameters();
     
     #ifdef EXO_DEBUG
