@@ -13,16 +13,22 @@
  * @param buffer_size The maximum size of the output_buffer.
  * @return true if the string was created successfully, false otherwise.
  */
+ /**
+@brief 将 11 个动态列标题字符串合并为单个逗号分隔的 C 字符串，前缀为 "t,"，后缀为 ",z"。
+@param output_buffer 用于存放最终结果的目标缓冲区
+@param buffer_size 输出缓冲区的最大长度
+@return 字符串构造成功返回 true，失败返回 false
+*/
 void create_plotting_titles(uint8_t* config_to_send) {
 	char output_buffer[MAX_COMBINED_HEADER_LENGTH];
 	size_t buffer_size = sizeof(output_buffer);
-    // Delimiter strings
+    // Delimiter strings    分隔字符串
     const char START_MARKER[] = "\nt,";
     const char END_MARKER[] = ",??";
     const size_t START_LEN = strlen(START_MARKER);
     const size_t END_LEN = strlen(END_MARKER);
     
-    // This constant ensures we only process 11 columns (index 0 to 10)
+    // 该常量确保我们只处理 11 列数据（索引范围 0 到 10）   This constant ensures we only process 11 columns (index 0 to 10)
     const size_t num_columns = 11; 
 
     // Initial check for minimum size including START and END markers

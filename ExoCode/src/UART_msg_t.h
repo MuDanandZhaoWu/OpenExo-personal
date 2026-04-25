@@ -5,12 +5,17 @@
 #include "Arduino.h"
 #include "Logger.h"
 
+
+/*
+结构体定义了在外骨骼系统中通过UART串口传输的数据包格式，
+用于Teensy主控制器与其他模块（如Nano）之间的通信
+*/
 typedef struct
 {
-  uint8_t command;
+  uint8_t command;      //指令类型标识符，用于确定消息的用途或类型, command定义在uart_commands.h中
   uint8_t joint_id;
-  float data[UART_MSG_T_MAX_DATA_LEN];
-  uint8_t len;
+  float data[UART_MSG_T_MAX_DATA_LEN];  //数组长度为最大发送消息长度
+  uint8_t len;      //数据长度，表示实际使用的data数组元素个数
 } UART_msg_t;
 
 namespace UART_msg_t_utils

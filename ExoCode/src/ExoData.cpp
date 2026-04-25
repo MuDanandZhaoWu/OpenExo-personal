@@ -5,11 +5,15 @@
 #include "Config.h"
 
 /*
- * Constructor for the exo data.
- * Takes the array from the INI parser.
- * Stores the exo status, and the sync LED state.
- * Uses an initializer list for the side data. 
- */
+外骨骼数据类的构造函数。
+接收来自 INI 配置解析器的数组。
+存储外骨骼状态与同步 LED 状态。
+使用初始化列表初始化左右侧数据。
+
+构造函数初始化left_side与right_side两个成员, 
+即调用 SideData 的构造函数去初始化 left_side 这个对象
+right_side和left_side是SideData对象
+*/
 ExoData::ExoData(uint8_t* config_to_send) 
 : left_side(true, config_to_send)            //Using initializer list for member objects.
 , right_side(false, config_to_send)
@@ -146,6 +150,7 @@ JointData* ExoData::get_joint_with(uint8_t id)
     return j_data;
 };
 
+//用于设置外骨骼系统的状态
 void ExoData::set_status(uint16_t status_to_set)
 {
     //If the status is already error, don't change it
@@ -187,8 +192,8 @@ void ExoData::set_default_parameters(uint8_t id)
                 set_controller_params((uint8_t)j_data->id, j_data->controller.controller, 0, this);
             }
         },
-        &f_id
-    );
+        &f_id   //for_each_joint函数的两个参数,一个是这里的lambda表达式, 一个是&f_id
+    );          //通过泛型回调args被替换为了&f_id(参考for_each_joint在ExoData.h中的声明)
     #endif
 }
 

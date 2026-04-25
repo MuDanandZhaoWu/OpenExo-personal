@@ -3,11 +3,16 @@
 #include <Arduino.h>
 
 /* Public */
+
+/*
+决定时间测量是使用微秒(micros())还是毫秒(millis())，默认为微秒
+*/
 Time_Helper::Time_Helper(bool use_micros)
 {
     _k_use_micros = use_micros;
 }
 
+//创建单例实例
 Time_Helper* Time_Helper::get_instance()
 {
     static Time_Helper* instance = new Time_Helper;
@@ -20,7 +25,7 @@ float Time_Helper::peek(float context)
     
     ticker_t* ticker = _ticker_from_context(context);
     
-    //The context does not exist or this is the tickers first tick
+    // 上下文不存在，或这是该计时器的首次计时       The context does not exist or this is the tickers first tick
     if (ticker->k_index < 0 || ticker->old_time < 0) {
         return 0;
     }

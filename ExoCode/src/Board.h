@@ -176,7 +176,7 @@
             //If you have connected to pins with PWM set to true.
             const bool status_has_pwm = true;
 
-            //For high to be on use 255 for the on state and 0 for the off, for low as on flip it.
+            // 高电平点亮时，点亮状态设为 255、熄灭为 0；低电平点亮时则反过来配置       For high to be on use 255 for the on state and 0 for the off, for low as on flip it.
             const uint8_t status_led_on_state = 0;//255;
             const uint8_t status_led_off_state = 4095;//0;  
                 

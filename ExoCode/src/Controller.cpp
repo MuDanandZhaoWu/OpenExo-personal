@@ -12,27 +12,41 @@
 #include <random>
 #include <cmath>
 
+//ExoData* exo_data的参数设置体现ExoData类依赖注入的设计模式
 _Controller::_Controller(config_defs::joint_id id, ExoData* exo_data)
 {
     _id = id;
     _data = exo_data;
     
-    _t_helper = Time_Helper::get_instance();
+    //_t_helper为Time_Helper类对象
+    _t_helper = Time_Helper::get_instance();    //创建Time_Helper类单例
+    //定义一个变量作为PID控制器计时器编号, generate_new_context用于生成一个唯一的计时器编号
     _t_helper_context = _t_helper->generate_new_context();
+    //初始化, _t_helper_delta_t用于存储两次时间测量之间的时间间隔
     _t_helper_delta_t = 0;
+    //定义一个变量作为步态模拟的计时器编号
     _sim_gait_context = _t_helper->generate_new_context();
+    //将模拟步态的累计时间初始化为0
     _sim_elapsed_us = 0.0f;
     
-    //We just need to know the side to point at the right data location so it is only for the constructor
+    //我们只需判断关节是左侧还是右侧，以此指向对应的数据存储位置，因此该逻辑仅在构造函数中实现  We just need to know the side to point at the right data location so it is only for the constructor
     bool is_left = utils::get_is_left(_id);
     
     #ifdef CONTROLLER_DEBUG
         logger::print(is_left ? "Left " : "Right ");
     #endif 
 
+    //上一次的输入值
     _prev_input = 0; 
+    /*
+    上一次算出来的 PID 微分值
+    
+    当时间步长（dt）不理想时（例如时间间隔太小导致数值计算不稳定），
+    控制器会使用_prev_de_dt的值来代替当前计算的微分值，以保持控制器的稳定运行。
+    */
     _prev_de_dt = 0;
         
+   
     //Set _controller_data to point to the data specific to the controller.
     switch (utils::get_joint_type(_id))
     {
@@ -42,6 +56,7 @@ _Controller::_Controller(config_defs::joint_id id, ExoData* exo_data)
             #endif
             if (is_left)
             {
+                //_controller_data是指向外部传入的exo_data类中的controller类的指针
                 _controller_data = &(exo_data->left_side.hip.controller);
                 _joint_data = &(exo_data->left_side.hip);
             }
@@ -134,7 +149,7 @@ _Controller::_Controller(config_defs::joint_id id, ExoData* exo_data)
         logger::print("Controller : \n\t_controller_data set \n\t_joint_data set");
     #endif
 
-    //Added a pointer to the side data as most controllers will need to access info specific to their side.
+    //添加了一个指向侧别数据的指针，因为大多数控制器都需要访问其对应侧别的专属信息      Added a pointer to the side data as most controllers will need to access info specific to their side.
     if (is_left)
     {
         _side_data = &(exo_data->left_side);
@@ -164,7 +179,14 @@ _Controller::_Controller(config_defs::joint_id id, ExoData* exo_data)
 }
 
 //****************************************************
+/*
+紧凑形式模型自由自适应控制器实现
 
+函数接受两个参数：
+期望的参考值（reference）和当前测量值（current_measurement），返回计算出的控制输出
+
+功能开发中, 尚未被使用
+*/
 float _Controller::_cf_mfac(float reference, float current_measurement)         //Compact Form Model Free Adaptive Controller (In-development, not yet employed)
 {
     //Calculate k-1 (k_0) delta
@@ -196,20 +218,48 @@ float _Controller::_cf_mfac(float reference, float current_measurement)         
  
 float _Controller::_pid(float cmd, float measurement, float p_gain, float i_gain, float d_gain)
 {	
-	// Disable pid for torque control if the torque sensor isn't calibrated
+	// 若扭矩传感器未校准，则禁用扭矩控制的 PID 算法     Disable pid for torque control if the torque sensor isn't calibrated
 	if (_joint_data->torque_offset_reading == 0) {
 		Serial.print("\nTorque sensor not calibrated. Closed-loop torque control disabled.");
-		return cmd;
+		//直接返回原始期望扭矩 cmd，不做 PID 闭环，保证设备安全
+        return cmd;
 	}
+    //计算预期的循环周期时间(理论控制周期, 代码设定的、PID 理想中每隔多久执行一次的固定时间间隔, 以微秒为单位)
     const float expected_us = (1.0f / LOOP_FREQ_HZ) * 1000000.0f;
+    
+    //获取当前循环的时间间隔（以微秒为单位），并更新时间上下文
+    /*
+    在这个代码中，"更新时间上下文"指的是通过_t_helper->tick(_t_helper_context)
+    函数调用来记录当前时间点，并计算自上次调用以来的时间间隔。
+
+    具体来说：
+
+    时间上下文（_t_helper_context）：这是一个标识符，代表PID控制器所使用的独立时间跟踪环境。
+    每个控制器都有自己的时间上下文，以确保时间计算的独立性。
+
+    Time_Helper的tick方法：这个方法会：
+    记录当前时间戳
+    计算与上次调用此方法之间的时间差（dt_us）
+    更新与特定上下文关联的时间信息
+    更新时间上下文：意味着在Time_Helper内部的某个数据结构中，
+    与_t_helper_context相关的内部时间记录被更新为当前时间，为下一次调用做准备。
+
+    这种机制确保了PID控制器能够准确计算时间间隔（dt），这对于积分和微分项的计算至关重要。
+    每次调用时，都会获得自上次调用以来经过的时间，这使得控制器能够适应实际的循环时间变化，
+    而不是假设一个固定的循环周期。
+    */
     const float dt_us = _t_helper->tick(_t_helper_context);
+    //检查时间间隔是否在可接受范围内，确保控制循环的稳定性
     const bool time_good = (dt_us > 0.0f) && (dt_us <= expected_us * (1.0f + LOOP_TIME_TOLERANCE));
+    //时间间隔转成秒，用于积分、微分计算
     const float dt_s = dt_us / 1000000.0f;
 
-    //Calculate the difference in the prescribed and measured torque 
+    //计算误差值（期望值减去测量值）                Calculate the difference in the prescribed and measured torque 
     float error_val = cmd - measurement;  
 
     //If we want to to include the integral term (Note: We generally do not like to use the I gain but we have it here for completeness) 
+    //如果需要启用积分项（注：我们通常不使用积分增益，此处仅为保证功能完整而保留）
+    // 外骨骼用的是「前馈 + PD」，不需要 I 来消静差
     if (i_gain != 0)
     {
         if (time_good)
@@ -222,31 +272,41 @@ float _Controller::_pid(float cmd, float measurement, float p_gain, float i_gain
         _pid_error_sum = 0;
     }
 
-    //Get the current status of the exskleton 
+    //获取外骨骼的当前状态      Get the current status of the exskleton 
     uint16_t exo_status = _data->get_status();
+    //判断是否处于活动试验状态（试验运行、FSR校准或FSR优化）
     bool active_trial = (exo_status == status_defs::messages::trial_on) || (exo_status == status_defs::messages::fsr_calibration) || (exo_status == status_defs::messages::fsr_refinement);
 
     //Reset the integral term if the user pauses the trial or we are no longer in an active trial
+    /*
+    如果用户暂停试验，或当前不再处于有效试验状态，
+    则清零积分项, 防止积分饱和（长时间误差累加导致电机超调）
+    这是用户启用了积分项的控制策略
+    */
+
     if (_data->user_paused || !active_trial)
     {
         _pid_error_sum = 0;
     }
 
-    //Initialize the derivative of the error 
+    //初始化误差导数变量    Initialize the derivative of the error 
     float de_dt = 0;
 
     //Calculate the derivative of the error
+    //判断循环时间是否正常
     if (time_good && dt_s > 0.0f)
     {
+        //负号：匹配控制方向(负号是因为测量值变化与误差变化方向相反)
         de_dt = -(measurement - _prev_input) / dt_s;
         _prev_de_dt = de_dt;
     }
     else 
     {
+        //时间异常时微分置 0，_prev_input保存当前测量值用于下一次计算
         de_dt = 0;
     }
 
-    //Set the previous times for the next loop through the controller
+    // 保存当前测量值，供下一次微分使用                 Set the previous times for the next loop through the controller
     _prev_input = measurement;
 
     //Calculate the individual P,I,and D Terms
@@ -260,31 +320,38 @@ float _Controller::_pid(float cmd, float measurement, float p_gain, float i_gain
 }
 
 //****************************************************
-
+//获取当前步态百分比. simulate参数表示"模拟模式"。这个参数决定了函数是使用真实的传感器数据还是模拟的步态数据
 float _Controller::_get_percent_gait(bool simulate)
 {
-    if (!simulate)
+//非模拟模式下, 返回真实步态周期
+if (!simulate)
     {
         return _side_data->percent_stance;
     }
 
+    //获取自上次调用以来经过的时间（以微秒为单位）, 将这个时间累加到_sim_elapsed_us变量中
     _sim_elapsed_us += _t_helper->tick(_sim_gait_context);
+    //模拟模式下以一秒为步态周期, 将模拟的步态时间转换为0到100之间的百分比值，表示当前步态周期的进度
     return fmodf(_sim_elapsed_us, 1000000.0f) / 1000000.0f * 100.0f;
 }
 
 //****************************************************
- 
+ //前馈PJMC算法
 float _Controller::_pjmc_generic(float current_fsr, float fsr_threshold, float setpoint_positive, float setpoint_negative)
 {
 	if (fsr_threshold == 1)
     {
-		return 0;               //fsr_threshold shouldn't be set to 1
+		return 0;               //fsr阈值不应该被设置为1    fsr_threshold shouldn't be set to 1
 	}
 
+    //计算线性变换的斜率，用于在阈值到最大值之间进行线性插值
 	float slope = (setpoint_positive - setpoint_negative)/(1 - fsr_threshold);
 
+    /*根据当前FSR值计算输出值。这是一个线性变换，当current_fsr等于fsr_threshold时，
+    输出setpoint_positive；当current_fsr等于1时，输出setpoint_negative*/
 	float prescribed_val = setpoint_positive - slope * (current_fsr - fsr_threshold);
 
+    //返回计算得到的控制值。注意注释指出这个值没有限制范围，这意味着输出值可能会超出预期范围
 	return prescribed_val;      //Note: This prescribed value is not capped
 }
 
@@ -1715,11 +1782,11 @@ Step::Step(config_defs::joint_id id, ExoData* exo_data)
     Serial.println("Step::Step");
 #endif
 
-    //Initializes Values
-    n = 1;
+    //初始化变量       Initializes Values
+    n = 1;              //记录已执行的阶跃次数
     start_flag = 1;
     start_time = 0;
-    cmd_ff = 0;
+    cmd_ff = 0;         //前馈指令
     end_time = 0;
 
     previous_command = 0;
@@ -1735,45 +1802,51 @@ Step::Step(config_defs::joint_id id, ExoData* exo_data)
 float Step::calc_motor_cmd()
 {
     
-    float Amplitude = _controller_data->parameters[controller_defs::step::amplitude_idx];           //Magnitude of Step Response
-    float Duration = _controller_data->parameters[controller_defs::step::duration_idx];             //Duration of Step Response
-    int Repetitions = _controller_data->parameters[controller_defs::step::repetitions_idx];         //Number of Step Responses
-    float Spacing = _controller_data->parameters[controller_defs::step::spacing_idx];               //Time Between Each Step Response
+    float Amplitude = _controller_data->parameters[controller_defs::step::amplitude_idx];  //Magnitude of Step Response
+    float Duration = _controller_data->parameters[controller_defs::step::duration_idx];    //Duration of Step Response
+    int Repetitions = _controller_data->parameters[controller_defs::step::repetitions_idx];//Number of Step Responses
+    float Spacing = _controller_data->parameters[controller_defs::step::spacing_idx];      //Time Between Each Step Response
 
     float tt = 0;
 
-    if (n <= Repetitions)                                          //If we are less than the number of desired repetitions
+    /*
+    码实现了一个可重复的阶跃信号发生器，
+    用于生成具有指定幅度、持续时间和间隔的阶跃控制信号
+    */
+    if (n <= Repetitions)                                          //若当前次数未达到设定的重复次数     If we are less than the number of desired repetitions
     {
-        if (start_flag == 1)                                        //If this is the start of this loop
+        if (start_flag == 1)                                        //若为本次阶跃输出的起始阶段    If this is the start of this loop
         {
-            start_time = millis();                                  //Record the start time
-            start_flag = 0;                                         //Set the flag so that we don't continue to record start time
+            start_time = millis();                                  //记录动作起始时间  Record the start time
+            start_flag = 0;                                         //清零起始标志，防止重复记录起始时间    Set the flag so that we don't continue to record start time
         }
 
         float current_time = millis();                              //Measure the current time
 
+        //计算当前阶跃已运行时间(秒)
         tt = (current_time - start_time) / 1000;                    //Determine the time since the begining of the control iteration, converted to seconds
-
+        // 如果当前时长未超过设定的阶跃持续时间
         if (tt <= Duration)                                         //If the time is less than the desired duration of the step
-        {
+        {   // 输出设定幅值的扭矩
             cmd_ff = Amplitude;                                     //Apply a torque at the desired magnitude 
         }
         else
-        {
+        {   // 将扭矩设置为 0
             cmd_ff = 0;                                             //Set the torque to 0
-
+            //如果前一次的阶跃持续时间小于设定值而当前阶跃时间大于设定时间, 则记录扭矩幅值输出结束的时刻
             if (previous_time <= Duration && tt > Duration)         //Calculate the time that the amplitude ended
             {
                 end_time = millis();
             }
-
+            // 若阶跃结束后已超过设定的间隔时间
             if (((current_time - end_time)/1000) >= Spacing)        //If the time since ending the step has exceeded our desired spacing
-            {
-                n = n + 1;                                          //Update the iteration count
+            {   // 更新阶跃迭代次数
+                n = n + 1;        
+                // 重置起始标志，准备新一轮阶跃的计时与执行                                  //Update the iteration count
                 start_flag = 1;                                     //Update the start flag to get a new start time and begin a new cycle
             }
         }
-
+        //将当前时间赋值给previous_time, 以准备下一次循环
         previous_time = tt;                                         //Record time to be used as previous time in next loop. 
 
     }
@@ -1815,10 +1888,12 @@ float Step::calc_motor_cmd()
     //    _controller_data->filtered_torque_reading = utils::ewma(_joint_data->torque_reading, _controller_data->filtered_torque_reading, 1);
     //}
 
+    //获得滤波后的扭矩读数，用于对扭矩传感器信号进行滤波处理
     _controller_data->filtered_torque_reading = utils::ewma(_joint_data->torque_reading, _controller_data->filtered_torque_reading, (_controller_data->parameters[controller_defs::step::alpha_idx])/100);
-
+    //将前馈命令（cmd_ff）存储到控制器数据中的ff_setpoint字段，用于后续监控和调试
     _controller_data->ff_setpoint = cmd_ff;
 
+    //实现前馈控制与PID反馈控制的组合
     float cmd = cmd_ff;
 
     if (_controller_data->parameters[controller_defs::step::pid_flag_idx] > 0)
@@ -1859,7 +1934,7 @@ float Step::calc_motor_cmd()
     //    }
     //}
 
-    //Sets the desired torque for plotting
+    // 设置期望扭矩，用于绘图显示    Sets the desired torque for plotting
     _controller_data->desired_torque = cmd_ff;
 
     return cmd;

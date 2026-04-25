@@ -28,8 +28,8 @@
 	#define RESISTOR_1 46700 //Set it to the measured resistance of R1 on the OpenExo Board 0.5.1 Mark 3, and update the volt_sense pin mapping in Board.h
 	#define RESISTOR_2 4670 //Set it to the measured resistance of R2 on the OpenExo Board 0.5.1 Mark 3, and update the volt_sense pin mapping in Board.h
     #define REAL_TIME_I2C 1
-    #define LOOP_FREQ_HZ 500
-    #define LOOP_TIME_TOLERANCE 0.1 
+    #define LOOP_FREQ_HZ 500            //设定的循环频率(期望值?)
+    #define LOOP_TIME_TOLERANCE 0.1     //定义循环周期允许误差 / 时间容限(秒)
     
     #define USE_SPEED_CHECK 0
 	#define USE_ANGLE_SENSORS 1

@@ -5,32 +5,38 @@
 #include "GetBulkChar.h"
 
 
-// --- Shared Global Constants (MUST MATCH SENDER) ---
-// Define the maximum size for the incoming message buffer.
+// --- 共享全局常量（必须与发送端保持一致)       Shared Global Constants (MUST MATCH SENDER) ---
+// 定义接收消息缓冲区的最大容量     Define the maximum size for the incoming message buffer.
 //const int MAX_MESSAGE_SIZE = 25000; 
 
-// --- Receiver Variables ---
+// --- 接收端变量       Receiver Variables ---
 //char rxBuffer_bulkStr[25000]; // Buffer to store the received data payload
-char rxBuffer_bulkStr[MAX_MESSAGE_SIZE]; // Buffer to store the received data payload
-int rxIndex = 0;                 // Current index for writing into rxBuffer_bulkStr
-bool messageComplete = false;    // Flag indicating a complete message is ready
+char rxBuffer_bulkStr[MAX_MESSAGE_SIZE]; // 用于存储接收到的数据载荷的缓冲区        Buffer to store the received data payload
+int rxIndex = 0;                 // 当前写入 rxBuffer_bulkStr 的索引位置        Current index for writing into rxBuffer_bulkStr
+bool messageComplete = false;    // 标记：是否已收到一条完整的消息      Flag indicating a complete message is ready
 
 // State tracking for the serial reception
 enum RxState {
-    WAITING_FOR_F,      // Looking for the start character 'f'
-    WAITING_FOR_COMMA,  // Found 'f', now looking for the first delimiter ','
-    RECEIVING_DATA      // Receiving the entire message frame
+    WAITING_FOR_F,      // 等待起始字符 'f'（寻找消息的开头）   Looking for the start character 'f'
+    WAITING_FOR_COMMA,  // 已找到 'f'，等待第一个分隔符 ','     Found 'f', now looking for the first delimiter ','
+    RECEIVING_DATA      // 正在接收完整的消息帧数据     Receiving the entire message frame
 };
 
+//默认初始状态, 寻找其实字符"f"
 RxState currentState = WAITING_FOR_F;
 
 
-// --- New Function: Blocking Message Reader ---
+// --- 新增函数：阻塞式消息读取器       New Function: Blocking Message Reader ---
 /**
  * @brief Synchronously reads the entire message frame ("f,data,z") from UART.
  * This function blocks indefinitely until a full message is received and processed.
  */
-void readSingleMessageBlocking() {
+
+/**
+ * @brief 从串口(UART)同步读取完整消息帧（格式："f,数据,z"）。
+ * 该函数会一直阻塞，直到接收到并处理完一整条完整消息。
+ */
+ void readSingleMessageBlocking() {
 	long initialTime = millis();
     //Serial.println("\n--- Entering Blocking Read Mode ---");
     //Serial.println("System will halt execution until a full frame is received.");
@@ -39,27 +45,33 @@ void readSingleMessageBlocking() {
 	
     char txBuffer_NanoReady[2] = "R";
 	size_t message_length = strlen(txBuffer_NanoReady);
-    // 2. Transmit the entire message in one burst using Serial.write().
+    // Transmit the entire message in one burst using Serial.write().
     // This is the most efficient method for large C-strings on Arduino.
-    while (!Serial1.available()) {
+    // 使用 Serial.write () 一次性批量发送完整消息。
+    // 这是 Arduino 中处理长 C 语言字符串最高效的方式。
+    while (!Serial1.available()) {  //如果串口空闲, 则执行循环
+        //向另一端的设备发送字符"R"，表示本端已准备就绪，请求对方发送数据
 		Serial1.write(txBuffer_NanoReady, message_length);
 		//Serial.print("\nCharacter R sent.");
+        //当串口空闲时, LED发紫光(品红), 表示灯带握手信号
 		digitalWrite(LEDR, HIGH);
 		digitalWrite(LEDG, LOW);
 		digitalWrite(LEDB, HIGH);
 		delay(20);
+        //超时跳出循环处理
 		if (millis() - initialTime > 10000) {
 			break;
 		}
 	}
 	
+    //退出等待接收数据状态, 此时只亮红灯
 	digitalWrite(LEDR, HIGH);
 	digitalWrite(LEDG, LOW);
 	digitalWrite(LEDB, LOW);
 	
-    // The loop runs indefinitely until the messageComplete flag is set to true.
+    // 循环会一直执行，直到 messageComplete 标志被置为 true 才停止      The loop runs indefinitely until the messageComplete flag is set to true.
     while (!messageComplete) {
-        // Only proceed if data is available in the UART buffer
+        // 只有当串口有数据时才执行循环     Only proceed if data is available in the UART buffer
         while (Serial1.available()) {
 			//Serial.print("\nSerial.available() > 0, incomingChar:");
             char incomingChar = Serial1.read();
@@ -68,13 +80,13 @@ void readSingleMessageBlocking() {
             // State 1: WAITING_FOR_F
             if (currentState == WAITING_FOR_F) {
                 if (incomingChar == 'f') {
-                    // Store 'f' and transition
+                    // 保存字符f并转换currentState到等待WAITING_FOR_COMMA(即',')的状态      Store 'f' and transition
                     if (rxIndex < MAX_MESSAGE_SIZE - 1) {
                         rxBuffer_bulkStr[rxIndex++] = incomingChar;
                         currentState = WAITING_FOR_COMMA;
                     }
 					else {
-                        // Buffer overflow on first character
+                        // 首个字符即发生缓冲区溢出     Buffer overflow on first character
                         currentState = WAITING_FOR_F;
                         rxIndex = 0;
                     }

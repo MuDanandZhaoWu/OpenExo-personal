@@ -15,7 +15,7 @@
 #include "Board.h"
 
 /**
- * @brief stores the status messages
+ * @brief 存储系统状态消息  stores the status messages
  */
 namespace status_defs
 {

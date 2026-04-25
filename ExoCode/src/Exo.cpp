@@ -19,6 +19,11 @@
  * Takes the exo_data
  * Uses initializer list for sides.
  * Only stores these objects, and exo_data pointer.
+ * 
+ * Exo 类的构造函数
+ * 接收 exo_data 指针
+ * 使用初始化列表初始化左右侧肢体对象
+ * 仅存储这些对象以及 exo_data 指针
  */
 Exo::Exo(ExoData* exo_data)
 : left_side(true, exo_data)      //Constructor: uses initializer list for the sides
@@ -27,7 +32,7 @@ Exo::Exo(ExoData* exo_data)
 , status_led(logic_micro_pins::status_led_r_pin, logic_micro_pins::status_led_g_pin, logic_micro_pins::status_led_b_pin)  //Create the status LED object.
 
 #ifdef USE_SPEED_CHECK
-    ,speed_check(logic_micro_pins::speed_check_pin)
+    speed_check(logic_micro_pins::speed_check_pin)
 #endif
 
 {

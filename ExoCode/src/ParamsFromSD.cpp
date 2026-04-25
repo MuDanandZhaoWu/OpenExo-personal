@@ -28,10 +28,13 @@
                 //logger::print("Arm 2 ");
                 break;
         }
+        //检查错误类型中的特定位，以确定发生了哪种类型的错误
         if (utils::get_bit(error_type, param_error::SD_not_found_idx))
         {
             //logger::print("SD Not Found, ");
         }            
+
+        //这里似乎是一个Bug, get_bit的输入应该是 file_not_found_idx，否则永远不会判断 “文件找不到”
         if (utils::get_bit(error_type, param_error::SD_not_found_idx))
         {
             //logger::print("File Not Found, ");
@@ -39,15 +42,27 @@
         //logger::println("File Not Found, ");
     }
     
+    /**
+     * @brief 从SD卡上的参数文件中加载控制器参数，并将其设置到ExoData结构体中
+     * 
+     * 此函数根据关节ID和控制器ID从SD卡中读取指定参数集，并更新相应的控制器参数。
+     * 支持多种关节类型：髋关节、膝关节、踝关节、肘关节、臂1和臂2。
+     * 
+     * @param joint_id 关节ID，用于确定要配置哪个关节
+     * @param controller_id 控制器ID，用于确定要使用的参数文件
+     * @param set_num 要读取的参数集编号
+     * @param exo_data 指向ExoData结构体的指针，用于存储外骨骼数据
+     * @return uint8_t 错误码，如果成功则为0，否则为相应的错误类型
+     */
     uint8_t set_controller_params(uint8_t joint_id, uint8_t controller_id, uint8_t set_num, ExoData* exo_data)
     {   
-        //SD inherits from stream which has a lot more useful methods that we will use.
-        File param_file;
-        std::string filename;
-        uint8_t header_size;        //Number of lines to skip before the parameters
-        uint8_t param_num_in_file;  //Number of parameters to pull in
-        uint8_t line_to_read;       //Line to read the parameters from
-        uint8_t error_type = 0;     //Error message holder
+        //SD 类继承自 Stream 类，后者提供了许多我们会用到的实用方法     SD inherits from stream which has a lot more useful methods that we will use.
+        File param_file;            // 定义SD卡文件操作对象，用于打开/读取/关闭参数文件
+        std::string filename;       // 存储参数文件的文件名（字符串格式）
+        uint8_t header_size;        // 参数前需要跳过的表头行数     Number of lines to skip before the parameters
+        uint8_t param_num_in_file;  // 文件中待读取的参数数量   Number of parameters to pull in
+        uint8_t line_to_read;       // 读取参数的目标行     Line to read the parameters from
+        uint8_t error_type = 0;     // 错误码存储变量   Error message holder
 
        
         switch(utils::get_joint_type(joint_id))
@@ -58,13 +73,14 @@
                     logger::println("\n\nset_controller_params : Hip");
                 #endif
 
-                //Connect to SD card
+                //初始化SPI总线, 准备与SD卡通讯(项目SD卡使用SPI协议进行通信)     Connect to SD card
                 SPI.begin();
 
                 #ifdef SD_PARAM_DEBUG
                     logger::println("set_controller_params : SPI Begin");
                 #endif
 
+                //检查SD卡是否初始化成功, 若不成功, 返回对应的错误类型
                 if (!SD.begin(SD_SELECT))
                 {
                     error_type = utils::update_bit((uint8_t)config_defs::joint_id::hip, 1, param_error::SD_not_found_idx);
@@ -77,7 +93,7 @@
                 }
                 else 
                 {
-                    //Get filename
+                    //如果SD卡初始化成功, 读取对应关节的对应控制器文件名称      Get filename
                     filename = controller_parameter_filenames::hip[controller_id];
 
                     #ifdef SD_PARAM_DEBUG
@@ -85,7 +101,12 @@
                         logger::println(filename.c_str());
                     #endif
 
-                    //Open File
+                    /*
+                    将filename转换为C语言风格, 以「只读模式(FILE_READ模式)」打开 SD 卡上指定名字的文件，
+                    并把打开后的文件对象赋值给 param_file(SD.open(...) 返回的就是一个 File 对象)。
+                    
+                    后续就可以用 param_file 读取文件里的控制器参数Open File
+                    */
                     param_file = SD.open(filename.c_str(), FILE_READ);
 
                     #ifdef SD_PARAM_DEBUG
@@ -94,7 +115,7 @@
                         logger::println(" opened");
                     #endif
 
-                    //Check file exists
+                    //File 类重载了布尔判断, 所以可以进行文件是否成功打开的判断     Check file exists
                     if (param_file)
                     {   
                         while(param_file.available())

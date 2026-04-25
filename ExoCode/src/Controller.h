@@ -1,8 +1,8 @@
 /**
  * @file Controller.h
  *
- * @brief Declares for the different controllers the exo can use. 
- * Controllers should inherit from _Controller class to make sure the interface is the same.
+ * @brief 声明外骨骼可使用的各类控制器  Declares for the different controllers the exo can use. 
+ *        所有控制器均需继承 _Controller 类，以保证接口统一      Controllers should inherit from _Controller class to make sure the interface is the same.
  * 
  * @author P. Stegall 
  * @date Jan. 2022
@@ -29,8 +29,8 @@
 #include <Adafruit_INA260.h>
 
 /**
- * @brief This class defines the interface for controllers.  
- * All controllers must have a: float calc_motor_cmd() that returns a torque cmd in Nm.  
+ * @brief 该类定义控制器的接口规范  This class defines the interface for controllers.  
+ * 所有控制器都必须实现 float calc_motor_cmd() 方法，该方法返回以牛米（Nm）为单位的力矩控制指令All controllers must have a: float calc_motor_cmd() that returns a torque cmd in Nm.  
  * 
  */
 class _Controller
@@ -40,24 +40,25 @@ class _Controller
          * @brief Constructor 
          * 
          * @param id of the joint being used
-         * @param pointer to the full ExoData instance
+         * @param pointer 指向完整 ExoData 实例的指针   to the full ExoData instance
          */
         _Controller(config_defs::joint_id id, ExoData* exo_data);
 		
         /**
-         * @brief Virtual destructor is needed to make sure the correct destructor is called when the derived class is deleted.
+         * @brief 虚析构函数，确保删除派生类对象时调用正确的析构函数
+         *        即保证用基类指针删除派生类对象时，派生类的析构函数也能被正确调用，避免内存泄漏 / 资源泄漏        Virtual destructor is needed to make sure the correct destructor is called when the derived class is deleted.
          */
         virtual ~_Controller(){};
         
         /**
-         * @brief Virtual function so that each controller must create a function that will calculate the motor command
+         * @brief 纯虚函数，要求每个派生控制器必须实现计算电机控制指令的函数    Virtual function so that each controller must create a function that will calculate the motor command
          * 
-         * @return Torque in Nm.
+         * @return 力矩，单位：牛米     Torque in Nm.
          */
 		virtual float calc_motor_cmd() = 0; 
         
         /**
-         * @brief Resets the integral sum for the controller
+         * @brief 重置控制器的积分累加和     Resets the integral sum for the controller
          */
         void reset_integral(); 
         
@@ -68,59 +69,60 @@ class _Controller
         SideData* _side_data;               /**< Pointer for the side data the controller is associated with */
         JointData* _joint_data;             /**< Pointer to the joint data the controller is associated with */
          
-        config_defs::joint_id _id;          /**< Id of the joint this controller is attached to. */
+        config_defs::joint_id _id;          /**< 该控制器所绑定的关节ID     Id of the joint this controller is attached to. */
         
-        Time_Helper* _t_helper;             /**< Instance of the time helper to track when things happen used to check if we have a set time for the PID */
-        float _t_helper_context;            /**< Store the context for the timer helper */
-        float _t_helper_delta_t;            /**< Time time since the last event */
+        Time_Helper* _t_helper;             /**< 时间辅助工具实例，用于记录事件发生时间，判断PID是否到达设定执行时间    Instance of the time helper to track when things happen used to check if we have a set time for the PID */
+        float _t_helper_context;            /**< 存储时间辅助工具的上下文状态   Store the context for the timer helper */
+        float _t_helper_delta_t;            /**< 距上一次事件的时间间隔     Time time since the last event */
 
-        //Values for the PID controller
-        float _pid_error_sum = 0;           /**< Summed error term for calucating intergral term */
-        float _prev_input;                  /**< Prev error term for calculating derivative */
-        float _prev_de_dt;                  /**< Prev error derivative used if the timestep is not good*/
-        float _prev_pid_time;               /**< Prev time the PID was called */
+        //PID控制器相关变量     Values for the PID controller
+        float _pid_error_sum = 0;           /**< 用于计算积分项的误差累加和     Summed error term for calucating intergral term */
+        float _prev_input;                  /**< 上一时刻误差值，用于计算微分项     Prev error term for calculating derivative */
+        float _prev_de_dt;                  /**< 上一时刻误差微分值，用于时间步长异常时备用     Prev error derivative used if the timestep is not good*/
+        float _prev_pid_time;               /**< 上一次执行PID计算的时间        Prev time the PID was called */
 
-        float _sim_gait_context = 0.0f;     /**< Timer context for simulated gait */
-        float _sim_elapsed_us = 0.0f;       /**< Accumulated simulated time */
+        float _sim_gait_context = 0.0f;     /**< 模拟步态的计时上下文, 记录步态模拟的计时起点，用于在没有实际步态传感器数据时模拟步态百分比      Timer context for simulated gait */
+        float _sim_elapsed_us = 0.0f;       /**< 记录自步态模拟开始以来已经过去的模拟时间（微秒）Accumulated simulated time */
         		
         /**
-         * @brief Calculates the current PID contribution to the motor command. 
+         * @brief 计算当前 PID 对电机控制指令的输出分量     Calculates the current PID contribution to the motor command. 
          * 
-         * @param controller command 
-         * @param measured controlled value
-         * @param proportional gain
-         * @param integral gain
-         * @param derivative gain
+         * @param controller command(期望值/设定值）  
+         * @param measured controlled value（实际测量值）     
+         * @param proportional gain     比例增益
+         * @param integral gain         积分增益
+         * @param derivative gain       微分增益
          */
         float _pid(float cmd, float measurement, float p_gain, float i_gain, float d_gain);
 
         /**
-         * @brief Returns percent gait, optionally using a simulated 1-second cycle.
+         * @brief 获取步态百分比，可选择使用 1 秒周期的模拟步态     Returns percent gait, optionally using a simulated 1-second cycle.
          *
-         * @param simulate flag to use simulated percent gait
+         * @param simulate 是否使用模拟步态百分比的标志位   flag to use simulated percent gait
          */
         float _get_percent_gait(bool simulate);
 		
 		/**
-         * @brief A function that returns cmd_ff for stateless PJMC. 
+         * @brief A function that returns cmd_ff for stateless PJMC. 为无状态（没记忆、不存历史、每次只看当下输入、独立计算） PJMC 算法计算前馈控制量 cmd_ff
          * 
-         * @param current fsr percentage value (after calibration, this value should typical range from 0 to 1 
-         * @param fsr threshold; a current fsr value below this threshold will have the generic pjmc function return a cmd_ff with a sign of setpoint_negative
-         * @param positive setpoint (the sign definitions follow those as shown in OpenSim's default models: Positive for dorsiflexion, knee extension, and hip flexion.
-         * @param negative setpoint
+         * @param current 校准后的当前 FSR 力敏电阻百分比值，正常范围 0~1   fsr percentage value (after calibration, this value should typical range from 0 to 1 
+         * @param fsr FSR 阈值；当前 FSR 值低于此阈值时，函数将返回对应负向设定值的前馈量   threshold; a current fsr value below this threshold will have the generic pjmc function return a cmd_ff with a sign of setpoint_negative
+         * @param setpoint_positive 正向设定值（当FSR值等于阈值时的输出）（符号遵循 OpenSim 默认模型：踝关节背屈、膝关节伸展、髋关节屈曲为正）  setpoint (the sign definitions follow those as shown in OpenSim's default models: Positive for dorsiflexion, knee extension, and hip flexion.
+         * @param setpoint_negative 负向设定值（当FSR值达到最大值1(压力超过阈值)时的输出, 实际应用中可能需要对输出值进行限制以确保系统安全）
+         * setpoint_positive与setpoint_negative分别定义了线性变换的两个端点
          */
         float _pjmc_generic(float current_fsr, float fsr_threshold, float setpoint_positive, float setpoint_negative);
         
-        //Values for the Compact Form Model Free Adaptive Controller
-        std::pair<float, float> measurements;
-        std::pair<float, float> outputs;
-        std::pair<float, float> phi;            /**< Psuedo partial derivative */
-        float rho;                              /**< Penalty factor (0,1) */
-        float lamda;                            /**< Weighting factor limits delta u */
-        float etta;                             /**< Step size constant (0, 1] */
-        float mu;                               /**< Weighting factor that limits the variance of u */
-        float upsilon;                          /**< A sufficiently small integer ~10^-5 */
-        float phi_1;                            /**< Initial/reset condition for estimation of psuedo partial derivitave */
+        // 紧凑型无模型自适应控制器（Compact Form Model Free Adaptive Controller）相关参数  Values for the Compact Form Model Free Adaptive Controller
+        std::pair<float, float> measurements;   // 测量值（存储当前/历史测量数据）
+        std::pair<float, float> outputs;        // 输出值（存储控制器输出指令）
+        std::pair<float, float> phi;            /**< 伪偏导数（Psuedo partial derivative，MFAC核心估计参数）用于近似系统的动态特性  Psuedo partial derivative */
+        float rho;                              /**< 惩罚因子（取值范围 (0,1), 控制对控制输入变化的惩罚程度，用于平衡跟踪性能和控制输入平滑性   Penalty factor (0,1) */
+        float lamda;                            /**< 加权因子（用于限制控制量增量Δu的幅值）限制控制输入的变化幅度（delta u），影响控制器的平滑性     Weighting factor limits delta u */
+        float etta;                             /**< 步长常数（取值范围 (0, 1]）控制参数更新的速度    Step size constant (0, 1] */
+        float mu;                               /**< 加权因子（用于限制控制量u的方差）影响控制的稳定性    Weighting factor that limits the variance of u */
+        float upsilon;                          /**< 极小常数（推荐取值约为10的-5次方）用于防止数值奇异或除零错误    A sufficiently small integer ~10^-5 */
+        float phi_1;                            /**< 伪偏导数估计的初始/重置条件值, 用于估计伪偏导数的初始值  Initial/reset condition for estimation of psuedo partial derivitave */
         
         float _cf_mfac(float reference, float current_measurement);
 };
@@ -133,6 +135,12 @@ class _Controller
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 地形自适应外骨骼控制器（TREC）
+    该控制器适用于踝关节
+
+    控制器所用参数的详细说明参见 ControllerData.h。
+*/
 class TREC : public _Controller
 {
 public:
@@ -159,6 +167,14 @@ private:
  *
  * See ControllerData.h for details on the parameters used.
  */
+    /**
+    @brief 比例关节力矩控制器
+    该控制器适用于踝关节
+    根据脚趾力敏电阻（FSR）的归一化幅值输出跖屈力矩。
+    本控制器基于以下文献实现：
+
+    控制器所用参数的详细说明参见 ControllerData.h。
+    */
 class ProportionalJointMoment : public _Controller
 {
     public:
@@ -180,6 +196,17 @@ class ProportionalJointMoment : public _Controller
  * 
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 零力矩控制器
+    适用于任意关节
+    仅输出零力矩
+    控制器所用参数的详细说明参见 ControllerData.h。
+
+    安全模式：当系统需要停止对关节施加任何控制力矩时，可以切换到此模式
+    待机状态：在某些测试或待机状态下，确保关节不受额外力矩影响
+    故障保护：在紧急情况或系统故障时，可切换至此模式以确保安全
+    对比基准：在实验中作为对照组，对比有无外骨骼辅助的情况
+*/
 class ZeroTorque : public _Controller
 {
     public:
@@ -203,6 +230,16 @@ class ZeroTorque : public _Controller
  * 
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 张 - 柯林斯控制器
+    该控制器适用于踝关节
+    在 t0 到 t1 阶段输出斜坡力矩，直至 (t1, ts)；
+    在 t1 到 t2 阶段通过样条曲线输出力矩，峰值达到 (t2, 体重 × 归一化峰值力矩)；
+    在 t2 到 t3 阶段力矩回落至 (t3, ts)；
+    在 t3 到 100% 步态周期内输出零力矩。
+
+    控制器所用参数的详细说明参见 ControllerData.h。
+*/
 class ZhangCollins: public _Controller
 {
     public:
@@ -224,6 +261,13 @@ class ZhangCollins: public _Controller
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 样条控制器
+    该控制器适用于髋关节与踝关节
+    根据五个（步态百分比，力矩）节点定义的样条曲线输出力矩。
+
+    控制器所用参数的详细说明参见 ControllerData.h。
+*/
 class Spline: public _Controller
 {
     public:
@@ -253,6 +297,24 @@ class Spline: public _Controller
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+@brief 弗兰克斯 - 柯林斯控制器
+该控制器适用于髋关节，三段式助力
+
+在 t0_trough 至 t1_trough 阶段力矩保持为 0，直至 (t1, 0)；
+在 t1_trough 至 t2_trough 阶段通过样条曲线输出力矩，直至波谷点 (t2_trough, 体重 × 归一化波谷力矩)；
+在 t2_trough 至 t3_trough 阶段力矩回升至 (t3_trough, 0)；
+在 t3_trough 至 t1_peak 阶段输出零力矩；
+在 t1_peak 至 t2_peak 阶段通过样条曲线输出力矩，直至峰值点 (t2_peak, 体重 × 归一化峰值力矩)；
+在 t2_peak 至 t3_peak 阶段力矩回落至 (t3_peak, 0)。
+
+本控制器基于以下文献实现：
+Franks, P. W., Bryan, G. M., Martin, R. M., Reyes, R., Lakmazaheri, A. C., & Collins, S. H.
+(2021). 单关节与多关节构型下髋、膝、踝关节外骨骼优化助力对比研究.
+《可穿戴技术》
+
+控制器所用参数的详细说明参见 ControllerData.h, 该控制器仍在开发中...
+*/
 class FranksCollinsHip: public _Controller
 {
     public:
@@ -260,8 +322,11 @@ class FranksCollinsHip: public _Controller
         ~FranksCollinsHip(){};
        
         float calc_motor_cmd();
-
-        float _spline_generation(float node1, float node2, float node3, float torque_magnitude, float shifted_percent_gait);
+        //确保曲线在节点处平滑连接，避免输出的突变
+        //在三个节点（预定义的步态相位点）之间创建平滑的三次样条曲线，每个节点区间内，函数使用三次多项式进行插值
+        //三个节点分别为力矩开始上升的时间点，力矩达到峰值的时间点和力矩下降到零的时间点
+        float _spline_generation(float node1, float node2, float node3, float torque_magnitude, 
+            float shifted_percent_gait);
 
         float last_percent_gait;
         float last_start_time;
@@ -275,6 +340,13 @@ class FranksCollinsHip: public _Controller
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 恒定力矩控制器
+    适用于任意关节
+    输出恒定力矩，在力矩幅值变化时会启用滤波处理
+
+    控制器所用参数的详细说明参见 ControllerData.h。
+*/
 class ConstantTorque : public _Controller
 {
 public:
@@ -300,6 +372,17 @@ public:
  * A Lightweight Powered Elbow Exoskeleton for Manual Handling Tasks. IEEE T-MRB, 6(4), 1627-1636.
  *
  * See ControllerData.h for details on the parameters used.
+ */
+/**
+ * @brief 肘关节控制器
+ * 该控制器适用于肘关节
+ * 基于手部力敏电阻（FSR）信号输出屈肘或伸肘力矩，辅助完成抬举动作
+ * 
+ * 该控制器的详细设计参考：
+ * Colley, D., Bowersock, C.D., Lerner, Z.F. (2024)
+ * 《轻量化主动肘关节外骨骼在人工搬运任务中的应用》，IEEE 医用机器人与生物力学汇刊（T-MRB），第6卷第4期，1627-1636页.
+ *
+ * 控制器所用参数详情参见 ControllerData.h 文件。
  */
 class ElbowMinMax : public _Controller
 {
@@ -353,6 +436,14 @@ public:
  *
  * See ControllerData.h for details on the parameters used. See documentation on procedures for calibration
  */
+/**
+    @brief 校准控制器
+    适用于任意关节。
+    输出恒定力矩，用于校准力矩方向的正负符号，确保力矩传感器的正负方向与预期方向一致。
+    该控制器应在设备首次测试时使用，尤其在搭载力矩传感器的场景下。
+    若未执行此校准，可能导致期望力矩与实测力矩之间的误差被放大，存在安全风险。
+    控制器所用参数详见 ControllerData.h，校准流程说明参见相关文档。
+*/
 class CalibrManager : public _Controller
 {
 public:
@@ -370,6 +461,14 @@ public:
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 
+    线性扫频控制器
+    适用于任意关节
+    根据用户设定参数输出正弦扫频信号
+    用于硬件性能校验
+    控制器相关参数详情参见 ControllerData.h。
+*/
 class Chirp : public _Controller
 {
 public:
@@ -393,18 +492,25 @@ public:
  *
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief 阶跃控制器
+    该控制器适用于任意关节
+    根据用户指定的幅值、持续时间和频率，向硬件输出阶跃响应信号
+    用于硬件性能验证
+    具体参数说明详见 ControllerData.h。
+*/
 class Step : public _Controller
 {
 public:
     Step(config_defs::joint_id id, ExoData* exo_data);
     ~Step() {};
 
-    int n;                          /* Keeps track of how many steps have been performed. */
-    int start_flag;                 /* Flag that triggers the recording of the time that the step is first applied. */
-    float start_time;               /* Time that the step was first applied. */
-    float cmd_ff;                   /* Motor command. */
-    float previous_time;            /* Stores time from previous iteration. */
-    float end_time;                 /* Records time that step ended. */
+    int n;                          /* 记录已执行的阶跃次数     Keeps track of how many steps have been performed. */
+    int start_flag;                 /* 阶跃信号首次输出时，触发记录起始时间的标志位     Flag that triggers the recording of the time that the step is first applied. */
+    float start_time;               /* 阶跃信号首次输出的时间   Time that the step was first applied. */
+    float cmd_ff;                   /* 电机前馈控制指令     Motor command. */
+    float previous_time;            /* 存储上一次循环迭代的时间     Stores time from previous iteration. */
+    float end_time;                 /* 记录阶跃信号结束的时间   Records time that step ended. */
 
     float previous_command;
     float previous_torque_reading;
@@ -414,7 +520,7 @@ public:
     float flag_time;
     float change_time;
 
-    float calc_motor_cmd();         /* Function that calculates the motor command. */
+    float calc_motor_cmd();         /* 计算电机控制指令     Function that calculates the motor command. */
 
 };
 
@@ -426,6 +532,15 @@ public:
  * NOTE: THIS CONTROLLER IS STILL UNDERDEVELOPMENT
  * 
  * See ControllerData.h for details on the parameters used.
+ */
+/**
+ * @brief 比例髋关节力矩控制器
+ * 本控制器适用于髋关节
+ * 根据髋关节力矩的估算值输出相应扭矩。
+ *
+ * 注意：此控制器仍在开发中
+ * 
+ * 所用参数的详细说明请参见 ControllerData.h。
  */
 class ProportionalHipMoment : public _Controller
 {
@@ -478,6 +593,12 @@ private:
  * 
  * See ControllerData.h for details on the parameters used.
  */
+/**
+    @brief SPV2 控制器
+
+    注：该控制器仍处于开发阶段
+    相关参数详情参见 ControllerData.h。
+*/
 class SPV2 : public _Controller
 {
 public:

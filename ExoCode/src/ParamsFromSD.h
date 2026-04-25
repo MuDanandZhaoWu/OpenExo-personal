@@ -113,8 +113,8 @@
     void print_param_error_message(uint8_t error_type);
     
     /**
-     * @brief 从SD卡读取文件并将其设置到exo_data对象中对应的控制器参数
-     * 有关输入参数的详细说明请参考ParseIni
+     * @brief 这个函数的主要作用是从SD卡上的参数文件中读取控制器参数，并将其设置到ExoData对象中相应的控制器中
+     *        有关输入参数的详细说明请参考ParseIni
      * 
      * @param joint_id 关节ID 
      * @param controller_id 控制器ID 

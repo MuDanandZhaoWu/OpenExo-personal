@@ -50,10 +50,15 @@ bool retrieveJointAndController(const char* filename_char, char* joint_out, char
     // The 1D buffer that will hold the final, flattened CSV string		存储最终扁平化CSV字符串的一维缓冲区(将二维数组转化为一维数组后存储)
 	extern char txBuffer_bulkStr[MAX_MESSAGE_SIZE];
 
-namespace { // Use an anonymous namespace for file-local scope (Best Practice)
+	/*这段代码是外骨骼控制器参数与CSV解析通信规范的一部分，
+	用于在读取和解析SD卡上的CSV参数文件时提供临时存储空间和必要的变量。
+	通过使用匿名命名空间，这些变量的作用域被限制在当前文件内，
+	避免与其他模块中的同名变量发生冲突。*/
+namespace { // 使用匿名命名空间，限定为文件作用域（最佳实践）	Use an anonymous namespace for file-local scope (Best Practice)
+	//stringArray用于存储解析的CSV文件第5行数据（通常是列名）
     static char stringArray[MAX_SNAPSHOTS][MAX_COLUMNS][MAX_STRING_LENGTH]; 
     
-	uint8_t failed2open;
+	uint8_t failed2open;	//用于统计在读取CSV参数文件时失败的文件数量
 	// Define the number of prefix columns to insert
 	const int PREFIX_COLS = 4;
 	const size_t MAX_NAME_LENGTH = 64;

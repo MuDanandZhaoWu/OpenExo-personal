@@ -12,7 +12,7 @@ enum class Inclination : uint8_t
 };
 
 /**
- * @brief Given stance and ankle angle data, return the current estimate of inclination
+ * @brief 根据支撑相状态与踝关节角度数据，输出当前路面坡度的估计值
  * 
  */
 class InclinationDetector
@@ -21,25 +21,25 @@ class InclinationDetector
     InclinationDetector();
 
     /**
-     * @brief Set the decline angle object
+     * @brief 设置下坡角度阈值
      * 
      * @param threshold 
      */
     void set_decline_angle(float threshold);
     
     /**
-     * @brief Set the incline angle threshold
+     * @brief 设置上坡角度阈值
      * 
      * @param threshold 
      */
     void set_incline_angle(float threshold);
 
     /**
-     * @brief check the current data
+     * @brief 检测当前步态与角度数据，判断路面坡度状态
      * 
      * @param is_stance 
      * @param norm_angle 
-     * @return Inclination 
+     * @return Inclination(坡度状态)
      */
     Inclination check(const bool is_stance, const bool fsr_calibrating, const float norm_angle);
     

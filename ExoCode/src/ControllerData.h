@@ -173,16 +173,16 @@ namespace controller_defs                   /**< Stores the parameter indexes fo
 
     namespace step                                              //Parameters for step torque used in max torque capacity testing
     {
-        const uint8_t amplitude_idx = 0;                        //Magnitude of the applied torque in Nm             
-        const uint8_t duration_idx = 1;                         //Duration of the applied torque
-        const uint8_t repetitions_idx = 2;                      //Number of times the torque is applied
-        const uint8_t spacing_idx = 3;                          //Time between each application of torque
-        const uint8_t pid_flag_idx = 4;                         //Flag to determine whether or not PID used
-        const uint8_t p_gain_idx = 5;                           //Value of P Gain for PID control
-        const uint8_t i_gain_idx = 6;                           //Value of I Gain for PID control
-        const uint8_t d_gain_idx = 7;                           //Value of D Gain for PID control
-        const uint8_t alpha_idx = 8;                            //Filtering term for exponentially wieghted moving average (EWMA) filter, used on torque sensor to cut down on noise.
-        const uint8_t num_parameter = 9;
+        const uint8_t amplitude_idx = 0;                        //施加扭矩的幅值，表示步进信号的最大值。这个参数决定了步进命令的最大输出强度, 单位Nm    Magnitude of the applied torque in Nm             
+        const uint8_t duration_idx = 1;                         //施加扭矩的持续时间        Duration of the applied torque
+        const uint8_t repetitions_idx = 2;                      //扭矩施加的次数            Number of times the torque is applied
+        const uint8_t spacing_idx = 3;                          //每次施加扭矩之间的时间间隔    Time between each application of torque
+        const uint8_t pid_flag_idx = 4;                         //确定是否使用PID的标志     Flag to determine whether or not PID used
+        const uint8_t p_gain_idx = 5;                           //PID控制的P增益值          Value of P Gain for PID control
+        const uint8_t i_gain_idx = 6;                           //PID控制的I增益值          Value of I Gain for PID control
+        const uint8_t d_gain_idx = 7;                           //PID控制的D增益值          Value of D Gain for PID control
+        const uint8_t alpha_idx = 8;                            //指数加权移动平均(EWMA)滤波器的滤波项，用于减少扭矩传感器噪声      Filtering term for exponentially wieghted moving average (EWMA) filter, used on torque sensor to cut down on noise.
+        const uint8_t num_parameter = 9;                        //参数总数
     }
 
     namespace proportional_hip_moment
@@ -271,14 +271,14 @@ class ControllerData {
         config_defs::JointType joint;                       /**< Id of the current joint */
 
         float setpoint;                                     /**< Controller setpoint, basically the motor command. */
-        float ff_setpoint;                                  /**< Feed forwared setpoint, only updated in closed loop controllers */
+        float ff_setpoint;                                  /**< 前馈设定值，仅在闭环控制器中进行更新   Feed forwared setpoint, only updated in closed loop controllers */
         float desired_torque;                               /**< Desired torque command for the controller */
         float parameters[controller_defs::max_parameters];  /**< Parameter list for the controller see the controller_defs namespace for the specific controller. */
         uint8_t parameter_set;                              /**< Temporary value used to store the parameter set while we are pulling from the sd card. */
 
-        float filtered_torque_reading;                      /**< Filtered torque reading, used for filtering torque signal */
-        float filtered_cmd;                                 /**< Filtered command, used for filtering motor commands */
-        float filtered_setpoint;                            /**< Filtered setpoint for the controller */
+        float filtered_torque_reading;                      /**< 滤波后的扭矩读数，用于对扭矩传感器信号进行滤波处理     Filtered torque reading, used for filtering torque signal */
+        float filtered_cmd;                                 /**< 滤波后的控制指令，用于对电机控制指令进行滤波处理       Filtered command, used for filtering motor commands */
+        float filtered_setpoint;                            /**< 控制器滤波后的设定值   Filtered setpoint for the controller */
         
         //Variables for Auto Kf in the PID Controller
         float kf = 1;                                       /**< Gain for the controller */

@@ -14,10 +14,9 @@
 #include "SystemReset.h"
 
 /**
- * @brief Type to associate a command with an ammount of data
- *
+ * @brief 用于将指令与对应数据长度关联起来的类型    Type to associate a command with an amount of data
+ *  定义了命令的ID值
  */
-
 namespace UART_command_names
 {
     /* Update_x must be get_x + 1 */
@@ -51,8 +50,8 @@ namespace UART_command_names
 };
 
 /**
- * @brief Holds all of the enums for the UART commands. The enums are used to properly index the data
- *
+ * @brief 包含所有 UART 命令相关的枚举类型。这些枚举用于对数据进行正确索引  Holds all of the enums for the UART commands. The enums are used to properly index the data
+ *  定义了命令参数的索引和长度
  */
 namespace UART_command_enums
 {
@@ -390,12 +389,30 @@ namespace UART_command_handlers
 
         //Note: Ankle and Hip are Configured for Step Controller, Elbow for the ElbowMinMax Controller, Multi-joint for their primary control schemes
 
+        // 绘制指南 [将数据值（0,1,2等）映射到Python GUI的颜色和选项卡；经验法则：偶数=蓝色，奇数=橙色）。
+        // Tab One
+        // 0 = 顶部蓝色线条
+        // 1 = 顶部橙色线条
+        // 2 = 底部蓝色线条
+        // 3 = 底部橙色线条
+
+        // Tab 2
+        // 4 = 顶部蓝色线条
+        // 5 = 顶部橙色线条
+        // 6 = 底部蓝色线条
+        // 7 = 底部橙色线条
+
+        // 8 = 不绘制，但会保存到csv文件
+        // 9 = 不绘制，但会保存到csv文件
+
+        // 注意：踝关节和髋关节配置用于步进控制器，肘关节用于ElbowMinMax控制器，多关节用于它们的主要控制方案
+
         switch (config[config_defs::exo_name_idx])
         {
         case (uint8_t)config_defs::exo_name::bilateral_ankle:
 		{
             rx_msg.len = (uint8_t)rt_data::BILATERAL_ANKLE_RT_LEN;
-            rx_msg.data[0] = exo_data->left_side.ankle.controller.desired_torque;
+            rx_msg.data[0] = exo_data->left_side.ankle.controller.desired_torque;           
             rx_msg.data[1] = exo_data->left_side.ankle.controller.filtered_torque_reading;
 			rx_msg.data[2] = exo_data->right_side.ankle.controller.desired_torque;
 			rx_msg.data[3] = exo_data->right_side.ankle.controller.filtered_torque_reading;
@@ -414,16 +431,16 @@ namespace UART_command_handlers
         case (uint8_t)config_defs::exo_name::bilateral_hip:
 		{
             rx_msg.len = (uint8_t)rt_data::BILATERAL_HIP_RT_LEN;
-            rx_msg.data[0] = exo_data->right_side.hip.controller.filtered_torque_reading;
-            rx_msg.data[1] = exo_data->right_side.hip.controller.desired_torque;
-            rx_msg.data[2] = exo_data->left_side.hip.controller.filtered_torque_reading;
-            rx_msg.data[3] = exo_data->left_side.hip.controller.desired_torque;
-            rx_msg.data[4] = exo_data->right_side.percent_gait / 100;
-            rx_msg.data[5] = exo_data->right_side.toe_fsr;
-            rx_msg.data[6] = exo_data->left_side.percent_gait / 100;
-            rx_msg.data[7] = exo_data->left_side.toe_fsr;
-            rx_msg.data[8] = exo_data->right_side.heel_fsr;
-            rx_msg.data[9] = exo_data->left_side.heel_fsr;
+            rx_msg.data[0] = exo_data->right_side.hip.controller.filtered_torque_reading;   // 右髋关节滤波扭矩读数
+            rx_msg.data[1] = exo_data->right_side.hip.controller.desired_torque;            // 右髋关节期望扭矩
+            rx_msg.data[2] = exo_data->left_side.hip.controller.filtered_torque_reading;    // 左髋关节滤波扭矩读数
+            rx_msg.data[3] = exo_data->left_side.hip.controller.desired_torque;             // 左髋关节期望扭矩
+            rx_msg.data[4] = exo_data->right_side.percent_gait / 100;                       // 右腿步态百分比
+            rx_msg.data[5] = exo_data->right_side.toe_fsr;                                  // 右脚趾压力传感器值
+            rx_msg.data[6] = exo_data->left_side.percent_gait / 100;                        // 左腿步态百分比
+            rx_msg.data[7] = exo_data->left_side.toe_fsr;                                   // 左脚趾压力传感器值
+            rx_msg.data[8] = exo_data->right_side.heel_fsr;                                 // 右脚跟压力传感器值
+            rx_msg.data[9] = exo_data->left_side.heel_fsr;                                  // 左脚跟压力传感器值
 			rx_msg.data[10] = exo_data->get_batt_info(0); //Not saved in the CSV file
             break;
 		}
@@ -757,6 +774,17 @@ namespace UART_command_utils
         return 0;
     }
 
+    /**
+     * @brief 等待并处理来自UART接口的配置请求命令, 等待外部设备（如上位机或配置工具）通过UART接口请求系统配置信息。若接收到请求，
+     * 调用相应的处理函数 UART_command_handlers::get_config 来发送当前系统配置
+     * 
+     * 此函数持续轮询UART接口，直到接收到get_config命令或超时。
+     * 当接收到get_config命令时，它会调用相应的处理程序来发送配置数据。
+     * 
+     * @param handler UART处理器指针，用于与UART接口通信
+     * @param data 包含要发送的配置数据的ExoData结构体指针
+     * @param timeout 超时时间（以毫秒为单位），如果超过此时间仍未收到请求则返回
+     */
     static void wait_for_get_config(UARTHandler *handler, ExoData *data, float timeout)
     {
         UART_msg_t rx_msg;
@@ -764,15 +792,24 @@ namespace UART_command_utils
         while (true)
         {
             logger::println("UART_command_utils::wait_for_config->Polling for config");
+            
+            // 轮询UART接口，等待接收消息
             rx_msg = handler->poll(100000);
+            
+            // 检查是否收到get_config命令
             if (rx_msg.command == UART_command_names::get_config)
             {
                 logger::println("UART_command_utils::wait_for_config->Got config request");
+                
+                // 处理get_config命令并发送配置数据
                 UART_command_handlers::get_config(handler, data, rx_msg);
                 break;
             }
+            
+            // 延迟短暂时间后继续轮询
             delayMicroseconds(500);
 
+            // 检查是否超时
             if ((millis() - start_time) > timeout)
             {
                 logger::println("UART_command_utils::wait_for_config->Timed out");

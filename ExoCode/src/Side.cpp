@@ -9,6 +9,11 @@
  * Takes in if the side is the left one and a pointer to the exo_data
  * Uses initializer list for hip, knee, and ankle joint; and the FSRs.
  * Only stores these objects, exo_data pointer, and if it is left (for easy access)
+ * 
+ * Side类的构造函数
+ * 传入参数：标识是否为左侧肢体的布尔值、指向exo_data的指针
+ * 使用初始化列表初始化髋、膝、踝等关节对象以及FSR压力传感器
+ * 仅存储上述对象、exo_data指针和左右侧标识，方便后续访问使用
  */
 Side::Side(bool is_left, ExoData* exo_data)
 : _hip((config_defs::joint_id)((uint8_t)(is_left ? config_defs::joint_id::left : config_defs::joint_id::right) | (uint8_t)config_defs::joint_id::hip), exo_data)        //We need to cast to uint8_t to do bitwise or, then we have to cast it back to joint_id

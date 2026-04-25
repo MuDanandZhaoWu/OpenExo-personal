@@ -340,7 +340,15 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
 }
 
 // --- Function to Read and Parse ---
+/*这个函数主要用于OpenExo外骨骼控制系统中，
+从SD卡上的CSV配置文件中读取第五行的控制器参数。
+系统需要动态加载不同关节（髋、膝、踝、肘等）和不同控制器类型的参数，
+并将这些参数按照特定格式组织，以便后续传输到其他设备或模块进行处理。
 
+根据项目规范，这些参数用于初始化不同的控制器算法，
+如零扭矩模式、PID控制、特定的步态辅助算法等，
+使系统能够根据不同任务和用户需求动态切换控制策略
+*/
  int readAndParseFifthRow(
     const char* filename_char, 
     char arr[][MAX_COLUMNS][MAX_STRING_LENGTH], 
@@ -349,19 +357,19 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
     uint8_t row_idx,
 	int i_ctrl) 
 {
-    // Buffers to hold extracted components
+    //用于存储解析出的参数组件的缓冲区 Buffers to hold extracted components
     char joint_name[MAX_NAME_LENGTH];
     char controller_name[MAX_NAME_LENGTH];
 
-    // Attempt to extract Joint and Controller names from the path
+    // 尝试从文件路径中解析出关节名称和控制器名称	Attempt to extract Joint and Controller names from the path
     bool extraction_success = retrieveJointAndController(
         filename_char, 
         joint_name, 
         controller_name
     );
     
-    // Use default values if extraction fails
-    //uint8_t joint_id_val = 255; // Default UNKNOWN ID
+    // 如果从文件路径中提取关节和控制器名称的操作失败，则使用默认值		Use default values if extraction fails
+    //uint8_t joint_id_val = 255; // Default UNKNOWN ID, 废弃代码, 以值255表示未知ID, 保留是保留注释是为了便于后续维护者理解原始设计意图
     const char* controller_str = "UNKNOWN_CTRL";
 
     if (extraction_success) {
@@ -369,16 +377,17 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
         controller_str = controller_name;
     }
     
-    // Check if there is enough space in the array for the prefix
+    // 检查数组是否有足够的空间用于插入前缀列(当前前缀列定义为四列)		Check if there is enough space in the array for the prefix
     if (maxCols < PREFIX_COLS) {
         Serial.println("\nERROR: MAX_COLUMNS too small for prefix insertion.");
         return 0;
     }
 
+	//调试打印：告知正在打开的具体CSV文件
     //Serial.print("\nOpening csv: ");
     //Serial.print(filename_char);
     
-    // Using SD.h types (File)
+    //使用SD库打开文件，如果打开失败则返回0 	 Using SD.h types (File)
     File dataFile = SD.open(filename_char);
     
     if (!dataFile) {
@@ -386,25 +395,34 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
         Serial.println(filename_char);
         // Assuming 'failed2open' is a global variable
         // failed2open++;
-        return 0; // Return 0 columns read
+        return 0; // Return 0 columns read	表示本次 CSV 文件解析读取到的有效列数为 0
     }
 
     // 1. Find the Fifth Line
-    int rowCount = 0;
-    String targetLine = "";
+    int rowCount = 0;	//行计数器
+    String targetLine = "";		//存储CSV文件目标行(此处即第五行)的完整内容
     
     // Read byte by byte until the end of the file or the fifth row is found
+	//dataFile.available()为SD 库的核心文件读取判断函数, 返回值为true时表示文件指针后还有未读取的字节，false则表示读到文件末尾
     while (dataFile.available()) {
-        char c = dataFile.read();
+        char c = dataFile.read();	//dataFile.read()是SD 库的逐字节读取函数，每次调用从文件中读取一个字符，并将文件指针后移一位
         
+		/*
+		只有当行计数器rowCount=4时（即程序识别到当前正在读取第五行），
+		才会将读取到的字符c拼接到targetLine；
+
+		前四行的字符会被读取，但不会做任何存储处理，
+		仅用于更新行计数器，保证只保留第五行的有效数据，节省内存。
+		*/
         if (rowCount == 4) { // Row 5 is index 4 (0-based)
             targetLine += c;
         }
         
+		// 遇到换行符，代表当前行读取完成，行计数器+1
         if (c == '\n') {
             rowCount++;
             if (rowCount > 4) {
-                break; // Stop after reading the entire fifth row
+                break; // 第五行读取完成后，立即跳出循环，停止读取文件	Stop after reading the entire fifth row
             }
         }
     }
@@ -488,12 +506,18 @@ void ctrl_param_array_gen(uint8_t* config_to_send) {
     return totalColsWritten; 
 }
 
+/*
+ 函数的作用是创建一个CSV格式的消息，
+ 将存储在二维数组 stringArray 中的参数数据组装成一个大的字符串，
+ 并将其存储到全局缓冲区 txBuffer_bulkStr 中
+ */
 void create_csv_message() {
-    // 1. Initialize the buffer
+    // 1. 初始化缓冲区用于批量数据发送的字符串缓冲区	Initialize the buffer
     txBuffer_bulkStr[0] = '\0'; // Start with an empty string
+	//strcat为字符串拼接函数, 添加消息前缀 "f,"，这在项目规范中被定义为消息的起始标志
 	strcat(txBuffer_bulkStr, "f,");
 	
-    // 2. Iterate through all stored rows (snapshots)
+    // 2. 遍历所有已存储的行（参数快照）	Iterate through all stored rows (snapshots)
     for (int i = 0; i < MAX_SNAPSHOTS; i++) {
         
         // Safety Check: Stop if the row is empty (based on our placeholder logic)
@@ -508,11 +532,11 @@ void create_csv_message() {
 				break; 
 			}
 			
-            // a. Append the string from the cell
-            // Note: This relies on stringArray[i][j] being null-terminated
+            // a. 将数组单元格中的字符串拼接到发送缓冲区	Append the string from the cell
+            //注意：此操作依赖于stringArray[i][j]以空字符终止 	Note: This relies on stringArray[i][j] being null-terminated
             strcat(txBuffer_bulkStr, stringArray[i][j]);
 
-            // b. Append the comma delimiter, except after the last column
+            // b. 如果不是最后一列，并且下一列不为空，则添加逗号分隔符到发送缓冲区	Append the comma delimiter, except after the last column
             if (j < MAX_COLUMNS - 1) {
 				if (stringArray[i][j+1][0] != '\0') {
 					strcat(txBuffer_bulkStr, ",");
@@ -520,32 +544,47 @@ void create_csv_message() {
             }
         }
         
-        // 4. Append the End-of-Line symbol
-        // Using '\n' (newline) is common; use "\r\n" for Windows/BLE compatibility if needed.
+        // 4. 添加行结束符	Append the End-of-Line symbol
+        // // 通常使用'\n'作为换行符；若需兼容Windows系统/蓝牙低功耗（BLE），可改用"\r\n"	Using '\n' (newline) is common; use "\r\n" for Windows/BLE compatibility if needed.
         strcat(txBuffer_bulkStr, "\n"); 
     }
-	strcat(txBuffer_bulkStr, ",?");
+	strcat(txBuffer_bulkStr, ",?");		//最后添加结束标志 ",?"，这在项目规范中被定义为消息的结束符
 }
 
 /**
  * @brief Extracts the "Joint" and "Controller" names from a path string 
  * formatted as "\Joint\Controller.csv". (Logic based on extract_components.cpp)
  */
+/*
+一个字符串解析函数，
+用于从形如 "/Joint/Controller.csv" 的路径字符串中
+提取关节（Joint）和控制器（Controller）名称
+
+输入: 一个包含文件路径的字符串 (filename_char)
+输出: 两个字符串缓冲区 (joint_out,controller_out)，用于存储解析出的关节名称和控制器名称
+*/
 bool retrieveJointAndController(const char* filename_char, char* joint_out, char* controller_out) {
-    if (!filename_char || !joint_out || !controller_out) return false;
+	//首先检查所有输入参数是否有效，若有任一参数为空指针则直接返回 false
+	if (!filename_char || !joint_out || !controller_out) return false;
 
     // 1. PREPARE START POINTER
     const char* start_ptr = filename_char;
+	//跳过路径开头的斜杠字符 '/'，使指针指向关节名称的起始位置。
     if (*start_ptr == '/') {
         start_ptr++; 
     }
     
     // 2. FIND JOINT END ('/')
+	/*
+	查找第一个 '/' 字符，它标志着关节名称的结束和控制器名称的开始。
+	如果找不到该字符，则返回 false
+	*/
     const char* joint_end_ptr = strchr(start_ptr, '/');
     if (!joint_end_ptr) return false;
 
     // 3. EXTRACT JOINT NAME
     size_t joint_len = joint_end_ptr - start_ptr;
+	// 计算安全拷贝长度：实际长度未超缓冲区则取实际值，超则取最大长度 - 1（预留 \0 终止符）
     size_t copy_len = (joint_len < MAX_NAME_LENGTH) ? joint_len : MAX_NAME_LENGTH - 1;
     strncpy(joint_out, start_ptr, copy_len);
     joint_out[copy_len] = '\0'; 
@@ -553,6 +592,7 @@ bool retrieveJointAndController(const char* filename_char, char* joint_out, char
     // 4. FIND CONTROLLER END ('.csv')
     const char* controller_start_ptr = joint_end_ptr + 1;
     const char* controller_end_ptr = strstr(controller_start_ptr, ".csv");
+	//如果未找到.csv则返回false
     if (!controller_end_ptr) return false;
     
     // 5. EXTRACT CONTROLLER NAME
