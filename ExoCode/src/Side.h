@@ -38,7 +38,7 @@ class Side
     public:
         Side(bool is_left, ExoData* exo_data); //Constructor: 
         
-        // 返回常量引用，只读访问
+        // 返回常量引用，只读访问(修正原项目不规范地从外部直接访问内部私有成员的错误)
         const HipJoint& get_hip() const { return _hip; }
         const KneeJoint& get_knee() const { return _knee; }
         const AnkleJoint& get_ankle() const { return _ankle; }
@@ -48,6 +48,7 @@ class Side
 
         /**
          * @brief Read FSR, calc percent gait, read joint data, send joint commands
+         * @brief 读取足底压力传感器(FSR)数据、计算步态周期百分比、采集关节数据、下发关节控制指令
          */
         void run_side(); 
 		
@@ -186,16 +187,36 @@ class Side
         bool _prev_toe_contact_state_toe_off;       /**< Prev toe off state used for toe off detection */
         bool _prev_toe_contact_state_toe_on;        /**< Prev toe off state used for toe off detection */
         
+        /**< 选取最近的若干步数据来预估期望运动时长，用于步态百分比的计算 */
         static const uint8_t _num_steps_avg = 3;    /**< Number of prior steps used to estimate the expected duration, used for percent gait calculation */
         unsigned int _step_times[_num_steps_avg];   /**< Stores the duration of the last N steps, used for percent gait calculation */ 
 
         unsigned int _stance_times[_num_steps_avg]; /**< Stores the duration of the last N stance phases, used for percent stance calculation */ 
         unsigned int _swing_times[_num_steps_avg];  /**< Stores the duration of the last N swing phases, used for percent swing calculation */ 
         
+        /*
+        _ground_strike_timestamp: 
+        记录当前地面冲击（ground strike）事件的时间戳
+        地面冲击是指脚部从摆动相（swing phase）进入支撑相（stance phase）的瞬间，即脚部接触地面的时刻
+
+        _prev_ground_strike_timestamp: 
+        记录上一时刻的地面冲击时间戳。
+        用于与 _ground_strike_timestamp 比较，计算两次地面冲击之间的时间差。
+
+        用途：
+        计算步态周期的持续时间（step duration）。
+        更新 _expected_step_duration，即预期的步态周期时间。
+        用于判断步态是否规律，例如是否在预期的时间窗口内
+        */
         unsigned int _ground_strike_timestamp;      /**< Records the time of the ground strike to determine if the next strike is within the expected window. */ 
         unsigned int _prev_ground_strike_timestamp; /**< Stores the last value to determine the difference in strike times. */ 
+        /*
+        记录预期的步态周期持续时间，即从一次地面冲击到下一次地面冲击的时间
+        该值是通过对最近几次步态周期时间的平均值计算得出的
+        */
         unsigned int _expected_step_duration;       /**< The expected step duration to calculate the percent gait.*/
         
+        //支撑相与摆动相的相关变量, 时间戳与预期的周期值
         unsigned int _toe_strike_timestamp;         /**< Records the time of the toe's ground strike to determine if the next strike is within the expected window. */ 
         unsigned int _prev_toe_strike_timestamp;    /**< Stores the last value to determine the difference in strike times. */
         unsigned int _expected_stance_duration;     /**< The expected stance duration to calculate the percent stance.*/

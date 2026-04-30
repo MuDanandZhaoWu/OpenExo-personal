@@ -112,6 +112,7 @@ void Time_Helper::destroy_context(float context)
 }
 
 /* Private */
+//检查新建的 new context 是否与已有的 context 值冲突
 bool Time_Helper::_context_conflicts(float context)
 {
     for (int i=0; i < tickers.size(); i++) {

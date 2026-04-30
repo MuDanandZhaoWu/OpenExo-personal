@@ -227,9 +227,15 @@ class FSR_Regressed
         float _calibration_refinement_max;                                  /**< The refined max used for doing the calibration */
         
         //Used for ground_contact()
+        // FSR触底判断
         bool _ground_contact;                                   /**< Is the FSR in contact with the ground */
+        // 状态计数防抖阈值：当计数器达到阈值时才最终判断为触底，用于判断FSR是否已经持续保持着地状态一段时间，过滤掉一些噪声与短暂的接触状态变化，提升触底检测的稳定性和可靠性。
         const uint8_t _ground_state_count_threshold = 4;        /**< Used to track if the FSR has been in contact with the ground for a while. */
+        // 着地判定施密特触发器下限百分比阈值
+        // 该值应设置得偏低，目的是尽可能精准捕捉足部刚接触地面的瞬间
         float _lower_threshold_percent_ground_contact = .15;    /**< Lower threshold for the schmitt trigger. This should be relatively low as we want to detect as close to ground contact as possible. */
+        // 着地判定施密特触发器上限百分比阈值
+        // 需略高于下限阈值，且两者差值尽量小；传感器读数必须超过该值，才会判定为有效着地
         float _upper_threshold_percent_ground_contact = .25;    /**< Should be slightly higher than the lower threshold but by as little as you can get by with as the sensor must go above this value to register contact. */
         
 };

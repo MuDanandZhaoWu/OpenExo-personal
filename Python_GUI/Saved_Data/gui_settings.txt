@@ -1,7 +1,7 @@
 bilateral=True
 last_parameter=2
-last_value=5.0
-last_joint=Hip(L) (65)
+last_value=3.0
+last_joint=Hip(R) (33)
 last_controller=step
 last_basic_joint_id=0
 last_basic_controller=0

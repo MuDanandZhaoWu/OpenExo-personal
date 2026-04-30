@@ -62,6 +62,7 @@ bool Exo::run()
     static Time_Helper* t_helper = Time_Helper::get_instance();
     static float context = t_helper->generate_new_context();
 
+    // 时间差值
     static float delta_t = 0;
     static uint16_t prev_status = data->get_status();
     delta_t += t_helper->tick(context);
@@ -80,14 +81,16 @@ bool Exo::run()
         #endif
 
         //Check if we should update the sync LED and record the LED on/off state.
+        // 判定是否需要更新同步 LED 状态，并记录 LED 的亮灭状态
         data->sync_led_state = sync_led.handler();
         bool trial_running = sync_led.get_is_blinking();
 
         //Check the estop
+        // Emergency Stop 急停开关
         data->estop = 0;    // By default, the estop functionality is disabled. To enable it, comment this line out and uncomment the line below.
         //data->estop = digitalRead(logic_micro_pins::motor_stop_pin);
 
-        //If the estop is low, disable all of the motors
+        // 如果急停开关的引脚为低电平，禁用所有电机
         if (data->estop)
         {
             data->for_each_joint([](JointData* j_data, float* args){j_data->motor.enabled = false;});

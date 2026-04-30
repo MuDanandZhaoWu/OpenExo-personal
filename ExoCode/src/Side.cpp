@@ -38,11 +38,22 @@ Side::Side(bool is_left, ExoData* exo_data)
         logger::println("Side :: Constructor : _data set");
     #endif
 
+    /* 
+    定义上一时刻FSR的状态,这些变量用于与当前FSR状态作比较, 以划分不同的步态事件
+
+    _prev_heel_contact_state: 表示脚跟（heel）的上一时刻的接触状态, 用于检测脚跟是否与地面接触。
+    _prev_toe_contact_state: 表示脚趾（toe）的上一时刻的接触状态, 用于检测脚趾是否与地面接触。
+    _prev_toe_contact_state_toe_off: 表示脚趾的上一时刻的接触状态，专门用于检测脚趾离开地面的事件（toe-off）。脚趾离地（toe-off）是步态周期中的一个关键事件，通常发生在摆动相开始时。
+    _prev_toe_contact_state_toe_on: 表示脚趾的上一时刻的接触状态，专门用于检测脚趾接触地面的事件（toe-on）。脚趾着地（toe-on）是步态周期中的一个关键事件，通常发生在摆动相结束时。
+
+    将它们初始化为 true 是为了避免程序在第一次运行时产生错误的事件检测，从而提高系统的稳定性和可靠性
+    */
     _prev_heel_contact_state = true;        //Initialized to true so we don't get a strike the first time we read
     _prev_toe_contact_state = true;
     _prev_toe_contact_state_toe_off = true;
     _prev_toe_contact_state_toe_on = true;
     
+    // 初始化步长数组(步长数组用于存储最近三个周期的步长, 用于预估期望运动时长)
     for (int i = 0; i<_num_steps_avg; i++)
     {
         _step_times[i] = 0;
@@ -57,9 +68,11 @@ Side::Side(bool is_left, ExoData* exo_data)
         logger::println("Side :: Constructor : Exit");
     #endif
 
+    // get_contact_thresholds: 获取着地接触阈值
     _heel_fsr.get_contact_thresholds(_side_data->heel_fsr_lower_threshold, _side_data->heel_fsr_upper_threshold);
     _toe_fsr.get_contact_thresholds(_side_data->toe_fsr_lower_threshold, _side_data->toe_fsr_upper_threshold);
 
+    //通过构造函数这个类的入口来初始化(new)一个类对象
     inclination_detector = new InclinationDetector();
 };
 
@@ -548,6 +561,15 @@ void Side::clear_step_time_estimate()
     }
 };
 
+/**
+ * @brief 更新电机命令，根据各个关节的使用状态执行相应的关节控制
+ * 
+ * 该函数检查侧边数据中各个关节（髋部、膝盖、脚踝、肘部、臂1、臂2）是否被使用，
+ * 如果被使用则运行对应的关节控制逻辑
+ * 
+ * @param 无参数
+ * @return 无返回值
+ */
 void Side::update_motor_cmds()
 {
     if (_side_data->hip.is_used)

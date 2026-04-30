@@ -84,6 +84,8 @@ class ExoData
                 func(&right_side.arm_2, NULL);
         }
         template <typename F>
+
+        //args(arguments) 传入的附加参数, 用于有参数传入的对每个关节都要执行的函数操作
         void for_each_joint(F &&func, float* args)
         {
                 func(&left_side.hip, args);

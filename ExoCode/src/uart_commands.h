@@ -14,8 +14,8 @@
 #include "SystemReset.h"
 
 /**
- * @brief 用于将指令与对应数据长度关联起来的类型    Type to associate a command with an amount of data
- *  定义了命令的ID值
+ * @brief 用于将指令与对应序号关联起来的类型    Type to associate a command with an amount of data
+ *        定义了命令（command）的ID值（类型）
  */
 namespace UART_command_names
 {
