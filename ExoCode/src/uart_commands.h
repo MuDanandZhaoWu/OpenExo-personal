@@ -67,6 +67,12 @@ namespace UART_command_enums
         STATUS = 0,
         LENGTH
     };
+    enum class status_request : uint8_t
+    {
+        STATUS = 0,
+        TOKEN = 1,
+        LENGTH
+    };
     enum class cal_trq_sensor : uint8_t
     {
         CAL_TRQ_SENSOR = 0,
@@ -121,6 +127,43 @@ namespace UART_command_enums
 };
 
 /**
+ * Tokenized status requests let the Nano distinguish a current Start/Stop ACK
+ * from a delayed ACK belonging to a cancelled request. Untokenized status
+ * messages remain valid for read-only status synchronization.
+ */
+namespace UART_status_requests
+{
+    inline static uint16_t next_token(ExoData* exo_data)
+    {
+        // Teensy->Nano UART payloads encode floats as signed int16 values
+        // multiplied by 100, so an integer token must remain <= 327.
+        if (exo_data->status_request_token >= 327)
+        {
+            exo_data->status_request_token = 1;
+        }
+        else
+        {
+            ++exo_data->status_request_token;
+        }
+        return exo_data->status_request_token;
+    }
+
+    inline static void send(UARTHandler* handler, uint16_t status,
+                            uint16_t token)
+    {
+        UART_msg_t msg = {};
+        msg.command = UART_command_names::update_status;
+        msg.joint_id = 0;
+        msg.data[(uint8_t)UART_command_enums::status_request::STATUS] =
+            status;
+        msg.data[(uint8_t)UART_command_enums::status_request::TOKEN] =
+            token;
+        msg.len = (uint8_t)UART_command_enums::status_request::LENGTH;
+        handler->UART_msg(msg);
+    }
+}
+
+/**
  * @brief Holds the handlers for all of the commands. The handler function types should be the same. The 'get'
  * handlers will respond with the appropriate command, the 'update' handlers will unpack the msg and pack
  * exo_data
@@ -145,7 +188,8 @@ namespace UART_command_handlers
         msg.command = UART_command_names::update_controller_params;
 
         uint8_t param_length = j_data->controller.get_parameter_length();
-        msg.len = param_length + (uint8_t)UART_command_enums::controller_params::LENGTH;
+        msg.len = param_length +
+            (uint8_t)UART_command_enums::controller_params::PARAM_START;
         msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID] = j_data->controller.controller;
         msg.data[(uint8_t)UART_command_enums::controller_params::PARAM_LENGTH] = param_length;
         for (int i = 0; i < param_length; i++)
@@ -168,8 +212,49 @@ namespace UART_command_handlers
         }
 
 #if defined(ARDUINO_TEENSY36) || defined(ARDUINO_TEENSY41)
-        j_data->controller.controller = (uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID];
-        set_controller_params(msg.joint_id, (uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID], (uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::PARAM_START], exo_data);
+        // Nano -> Teensy command: controller ID, declared preset count, preset
+        // number. The reverse-direction legacy query response is variable
+        // length and is intentionally not interpreted as this command on Nano.
+        if (msg.len != (uint8_t)UART_command_enums::controller_params::LENGTH)
+        {
+            return;
+        }
+        const float controller_raw = msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID];
+        const float set_raw = msg.data[(uint8_t)UART_command_enums::controller_params::PARAM_START];
+        if (!isfinite(controller_raw) || floorf(controller_raw) != controller_raw ||
+            controller_raw < 0.0f || controller_raw > 255.0f ||
+            !isfinite(set_raw) || floorf(set_raw) != set_raw ||
+            set_raw < 0.0f || set_raw > 255.0f)
+        {
+            return;
+        }
+        const uint8_t requested_controller = (uint8_t)controller_raw;
+        if (j_data->controller.get_parameter_length(requested_controller) == 0)
+        {
+            return;
+        }
+
+        float previous_parameters[controller_defs::max_parameters];
+        for (uint8_t i = 0; i < controller_defs::max_parameters; ++i)
+        {
+            previous_parameters[i] = j_data->controller.parameters[i];
+        }
+        const uint8_t parameter_error = set_controller_params(
+            msg.joint_id, requested_controller, (uint8_t)set_raw, exo_data);
+        if (parameter_error != 0)
+        {
+            for (uint8_t i = 0; i < controller_defs::max_parameters; ++i)
+            {
+                j_data->controller.parameters[i] = previous_parameters[i];
+            }
+            print_param_error_message(parameter_error);
+            return;
+        }
+
+        // Commit the controller identity only after the entire preset row has
+        // been found and parsed successfully.
+        j_data->controller.controller = requested_controller;
+        j_data->controller.parameter_set = (uint8_t)set_raw;
         //Serial.println("Updating Controller Params: " + String(msg.joint_id) + ", " + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::PARAM_START]) + ", " + String(j_data->controller.controller));
 #endif
     }
@@ -189,12 +274,283 @@ namespace UART_command_handlers
 
     inline static void update_status(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
-        exo_data->set_status(msg.data[(uint8_t)UART_command_enums::status::STATUS]);
-#if defined(ARDUINO_TEENSY36) || defined(ARDUINO_TEENSY41)
-        if (msg.data[(uint8_t)UART_command_enums::status::STATUS] == status_defs::messages::trial_on)
+        const bool has_token =
+            msg.len ==
+                (uint8_t)UART_command_enums::status_request::LENGTH;
+        if (msg.len != (uint8_t)UART_command_enums::status::LENGTH &&
+            !has_token)
         {
-            //Set default parameters for each used joint
-            exo_data->set_default_parameters();
+            return;
+        }
+        const float requested_raw =
+            msg.data[(uint8_t)UART_command_enums::status::STATUS];
+        if (!isfinite(requested_raw) || requested_raw < 0.0f ||
+            requested_raw > 65535.0f || floorf(requested_raw) != requested_raw)
+        {
+            return;
+        }
+        const uint16_t requested_status = (uint16_t)requested_raw;
+        uint16_t request_token = 0;
+        if (has_token)
+        {
+            const float token_raw =
+                msg.data[(uint8_t)UART_command_enums::status_request::TOKEN];
+            if (!isfinite(token_raw) || token_raw < 1.0f ||
+                token_raw > 327.0f || floorf(token_raw) != token_raw)
+            {
+                return;
+            }
+            request_token = (uint16_t)token_raw;
+        }
+#if defined(ARDUINO_TEENSY36) || defined(ARDUINO_TEENSY41)
+        const auto force_safe_off = [exo_data]()
+        {
+            exo_data->for_each_joint([](JointData* j_data, float* args)
+            {
+                (void)args;
+                j_data->motor.enabled = false;
+                j_data->motor.is_on = false;
+                j_data->motor.p_des = 0.0f;
+                j_data->motor.v_des = 0.0f;
+                j_data->motor.kp = 0.0f;
+                j_data->motor.kd = 0.0f;
+                j_data->motor.t_ff = 0.0f;
+                j_data->controller.setpoint = 0.0f;
+            });
+            exo_data->user_paused = true;
+        };
+        const auto send_status_ack =
+            [handler, exo_data, has_token, request_token]()
+        {
+            UART_msg_t ack = {};
+            ack.command = UART_command_names::update_status;
+            ack.joint_id = 0;
+            ack.len = has_token
+                ? (uint8_t)UART_command_enums::status_request::LENGTH
+                : (uint8_t)UART_command_enums::status::LENGTH;
+            ack.data[(uint8_t)UART_command_enums::status::STATUS] =
+                exo_data->get_status();
+            if (has_token)
+            {
+                ack.data[(uint8_t)UART_command_enums::status_request::TOKEN] =
+                    request_token;
+            }
+            handler->UART_msg(ack);
+        };
+
+        if (requested_status == status_defs::messages::trial_on)
+        {
+            const uint16_t current_status = exo_data->get_status();
+            if (current_status == status_defs::messages::trial_on)
+            {
+                // Start retransmissions are idempotent. The separately
+                // delivered enable frame may still resume a paused motor.
+                send_status_ack();
+                return;
+            }
+            if (current_status == status_defs::messages::fsr_calibration ||
+                current_status == status_defs::messages::fsr_refinement)
+            {
+                // Do not restart or duplicate an in-progress FSR session.
+                send_status_ack();
+                return;
+            }
+            if ((current_status & status_defs::messages::error) != 0)
+            {
+                // Errors require their existing explicit recovery path.
+                force_safe_off();
+                send_status_ack();
+                return;
+            }
+
+            bool torque_calibration_pending = false;
+            exo_data->for_each_joint(
+                [&torque_calibration_pending](JointData* j_data, float* args)
+                {
+                    (void)args;
+                    torque_calibration_pending =
+                        torque_calibration_pending ||
+                        (j_data->is_used && j_data->calibrate_torque_sensor);
+                });
+            if (torque_calibration_pending)
+            {
+                force_safe_off();
+                exo_data->set_status(
+                    status_defs::messages::torque_calibration);
+                send_status_ack();
+                return;
+            }
+
+            // De-energize and clear the command path before touching the SD
+            // card. This also normalizes completed calibration states, which
+            // the existing GUI legitimately transitions from when starting a
+            // trial. A separate enable message is required after a successful
+            // load and establishes the motor power-conditioning order.
+            force_safe_off();
+            exo_data->set_status(status_defs::messages::trial_off);
+            if (!exo_data->set_default_parameters())
+            {
+                // A trial may never start with missing, empty, malformed, or
+                // incompatible controller metadata.
+                logger::println(
+                    "UART_command_handlers::update_status->parameter load failed; trial remains off");
+                send_status_ack();
+                return;
+            }
+            exo_data->set_status(status_defs::messages::trial_on);
+            send_status_ack();
+            return;
+        }
+
+        // Any externally requested non-trial state is also a stop boundary.
+        force_safe_off();
+        exo_data->set_status(requested_status);
+        send_status_ack();
+#else
+        const uint16_t current_status = exo_data->get_status();
+        const bool start_ack_matches = has_token &&
+            exo_data->start_request_pending &&
+            request_token == exo_data->pending_start_token;
+        const bool stop_ack_matches = has_token &&
+            exo_data->stop_request_pending &&
+            request_token == exo_data->pending_stop_token;
+        if (requested_status == status_defs::messages::trial_on)
+        {
+            if ((current_status & status_defs::messages::error) != 0)
+            {
+                // A remote Start ACK must not clear a Nano-side error latch.
+                if (start_ack_matches)
+                {
+                    exo_data->start_request_pending = false;
+                }
+                return;
+            }
+            if (!start_ack_matches)
+            {
+                // Accept an idempotent ACK only when this side already knows
+                // the trial is on and the message is an untagged status sync.
+                // A mismatched token belongs to a cancelled or superseded
+                // request (for example, an ACK delayed past Stop).
+                if (!has_token &&
+                    current_status == status_defs::messages::trial_on)
+                {
+                    exo_data->set_status(requested_status);
+                }
+                return;
+            }
+
+            exo_data->set_status(requested_status);
+            if (exo_data->get_status() != status_defs::messages::trial_on)
+            {
+                exo_data->start_request_pending = false;
+                return;
+            }
+
+            exo_data->start_request_pending = false;
+            exo_data->for_each_joint([](JointData* j_data, float* args)
+            {
+                (void)args;
+                if (j_data->is_used)
+                {
+                    j_data->motor.enabled = true;
+                }
+            });
+            exo_data->user_paused = false;
+
+            // Phase 2: only a confirmed Teensy trial may enable motors and
+            // start the one-time FSR calibration for this session.
+            UART_msg_t tx_msg = {};
+            tx_msg.command =
+                UART_command_names::update_motor_enable_disable;
+            tx_msg.joint_id = 0;
+            tx_msg.data[(uint8_t)UART_command_enums::motor_enable_disable::ENABLE_DISABLE] = 1.0f;
+            tx_msg.len =
+                (uint8_t)UART_command_enums::motor_enable_disable::LENGTH;
+            handler->UART_msg(tx_msg);
+            if (!exo_data->start_fsr_calibration_sent)
+            {
+                delayMicroseconds(10);
+                tx_msg.command = UART_command_names::update_cal_fsr;
+                tx_msg.len = 0;
+                handler->UART_msg(tx_msg);
+                exo_data->start_fsr_calibration_sent = true;
+            }
+            return;
+        }
+
+        const bool requested_error =
+            (requested_status & status_defs::messages::error) != 0;
+        if (has_token && !start_ack_matches && !stop_ack_matches &&
+            !requested_error)
+        {
+            // Ignore a stale tokenized rejection/stop ACK. In particular it
+            // must not cancel a newer Start request.
+            return;
+        }
+        if (!has_token &&
+            (exo_data->start_request_pending ||
+             exo_data->stop_request_pending) &&
+            !requested_error)
+        {
+            // A read-only status response cannot complete or reject an active
+            // tokenized state transition.
+            return;
+        }
+
+        if (start_ack_matches || requested_error)
+        {
+            exo_data->start_request_pending = false;
+        }
+        if (stop_ack_matches || requested_error)
+        {
+            exo_data->stop_request_pending = false;
+        }
+        exo_data->set_status(requested_status);
+        if (requested_status == status_defs::messages::fsr_calibration ||
+            requested_status == status_defs::messages::fsr_refinement)
+        {
+            // If a status query observes calibration, it already belongs to
+            // this session and must not be restarted by the next Start retry.
+            exo_data->start_fsr_calibration_sent = true;
+        }
+        else if (requested_status == status_defs::messages::trial_off ||
+                 requested_status == status_defs::messages::off ||
+                 (requested_status & status_defs::messages::error) != 0)
+        {
+            exo_data->start_fsr_calibration_sent = false;
+        }
+        exo_data->for_each_joint([](JointData* j_data, float* args)
+        {
+            (void)args;
+            if (j_data->is_used)
+            {
+                j_data->motor.enabled = false;
+                j_data->motor.is_on = false;
+            }
+        });
+        exo_data->user_paused = true;
+
+        if (stop_ack_matches)
+        {
+            const bool may_start_after_stop =
+                exo_data->start_request_after_stop &&
+                (requested_status == status_defs::messages::trial_off ||
+                 requested_status == status_defs::messages::off) &&
+                (exo_data->get_status() & status_defs::messages::error) == 0;
+            exo_data->start_request_after_stop = false;
+            if (may_start_after_stop)
+            {
+                exo_data->start_request_pending = true;
+                exo_data->pending_start_token =
+                    UART_status_requests::next_token(exo_data);
+                UART_status_requests::send(
+                    handler, status_defs::messages::trial_on,
+                    exo_data->pending_start_token);
+            }
+        }
+        else if (requested_error)
+        {
+            exo_data->start_request_after_stop = false;
         }
 #endif
     }
@@ -324,10 +680,12 @@ namespace UART_command_handlers
     inline static void update_cal_fsr(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
         // logger::println("UART_command_handlers::update_cal_fsr->Got msg");
-        exo_data->right_side.do_calibration_toe_fsr = 1;
-        exo_data->right_side.do_calibration_heel_fsr = 1;
-        exo_data->left_side.do_calibration_toe_fsr = 1;
-        exo_data->left_side.do_calibration_heel_fsr = 1;
+        const bool right_used = exo_data->right_side.is_used;
+        const bool left_used = exo_data->left_side.is_used;
+        exo_data->right_side.do_calibration_toe_fsr = right_used;
+        exo_data->right_side.do_calibration_heel_fsr = right_used;
+        exo_data->left_side.do_calibration_toe_fsr = left_used;
+        exo_data->left_side.do_calibration_heel_fsr = left_used;
     }
 
     inline static void get_refine_fsr(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
@@ -336,10 +694,12 @@ namespace UART_command_handlers
     inline static void update_refine_fsr(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
         // logger::println("UART_command_handlers::update_refine_fsr->Got msg");
-        exo_data->right_side.do_calibration_refinement_toe_fsr = 1;
-        exo_data->right_side.do_calibration_refinement_heel_fsr = 1;
-        exo_data->left_side.do_calibration_refinement_toe_fsr = 1;
-        exo_data->left_side.do_calibration_refinement_heel_fsr = 1;
+        const bool right_used = exo_data->right_side.is_used;
+        const bool left_used = exo_data->left_side.is_used;
+        exo_data->right_side.do_calibration_refinement_toe_fsr = right_used;
+        exo_data->right_side.do_calibration_refinement_heel_fsr = right_used;
+        exo_data->left_side.do_calibration_refinement_toe_fsr = left_used;
+        exo_data->left_side.do_calibration_refinement_heel_fsr = left_used;
     }
 
     inline static void get_motor_enable_disable(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
@@ -347,11 +707,26 @@ namespace UART_command_handlers
     }
     inline static void update_motor_enable_disable(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
-        // logger::println("UART_command_handlers::update_motor_enable_disable->Got msg");
+        if (msg.len !=
+            (uint8_t)UART_command_enums::motor_enable_disable::LENGTH)
+        {
+            return;
+        }
+        const float enable_raw =
+            msg.data[(uint8_t)UART_command_enums::motor_enable_disable::ENABLE_DISABLE];
+        if (!isfinite(enable_raw) ||
+            (enable_raw != 0.0f && enable_raw != 1.0f))
+        {
+            return;
+        }
+        const bool requested_enable = enable_raw == 1.0f;
+        const bool allow_enable = requested_enable &&
+            exo_data->get_status() == status_defs::messages::trial_on;
+        float enable_arg = allow_enable ? 1.0f : 0.0f;
         exo_data->for_each_joint([](JointData *j_data, float *args)
                                  {if (j_data->is_used) j_data->motor.enabled = (bool)args[0]; },
-                                 msg.data);
-        exo_data->user_paused = !(bool)msg.data[0];
+                                 &enable_arg);
+        exo_data->user_paused = !allow_enable;
     }
 
     inline static void get_motor_zero(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
@@ -591,6 +966,7 @@ namespace UART_command_handlers
 
     inline static void update_controller_param(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
+#if defined(ARDUINO_TEENSY36) || defined(ARDUINO_TEENSY41)
         //Get the joint
         JointData *j_data = exo_data->get_joint_with(msg.joint_id);
         if (j_data == NULL)
@@ -601,15 +977,57 @@ namespace UART_command_handlers
             return;
         }
 
-        //Set the controller
-        if (msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID] != j_data->controller.controller)
+        if (msg.len != (uint8_t)UART_command_enums::controller_param::LENGTH)
         {
-            j_data->controller.controller = (uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID];
-            exo_data->set_default_parameters((uint8_t)j_data->id);
+            return;
+        }
+
+        const float controller_raw = msg.data[(uint8_t)UART_command_enums::controller_param::CONTROLLER_ID];
+        const float index_raw = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX];
+        const float value = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE];
+        if (!isfinite(controller_raw) || floorf(controller_raw) != controller_raw ||
+            controller_raw < 0.0f || controller_raw > 255.0f ||
+            !isfinite(index_raw) || floorf(index_raw) != index_raw ||
+            index_raw < 0.0f || index_raw > 255.0f || !isfinite(value))
+        {
+            return;
+        }
+
+        const uint8_t requested_controller = (uint8_t)controller_raw;
+        const uint8_t parameter_index = (uint8_t)index_raw;
+        const uint8_t parameter_length =
+            j_data->controller.get_parameter_length(requested_controller);
+        if (parameter_length == 0 || parameter_length > controller_defs::max_parameters ||
+            parameter_index >= parameter_length)
+        {
+            return;
+        }
+
+        //Set the controller
+        if (requested_controller != j_data->controller.controller)
+        {
+            float previous_parameters[controller_defs::max_parameters];
+            for (uint8_t i = 0; i < controller_defs::max_parameters; ++i)
+            {
+                previous_parameters[i] = j_data->controller.parameters[i];
+            }
+            const uint8_t parameter_error = set_controller_params(
+                (uint8_t)j_data->id, requested_controller, 0, exo_data);
+            if (parameter_error != 0)
+            {
+                for (uint8_t i = 0; i < controller_defs::max_parameters; ++i)
+                {
+                    j_data->controller.parameters[i] = previous_parameters[i];
+                }
+                print_param_error_message(parameter_error);
+                return;
+            }
+            j_data->controller.controller = requested_controller;
+            j_data->controller.parameter_set = 0;
         }
 
         //Set the parameter
-        j_data->controller.parameters[(uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]] = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE];
+        j_data->controller.parameters[parameter_index] = value;
 		
 		#ifdef SIMPLE_DEBUG
 		Serial.print("\nTeensy just updated a control parameter:");
@@ -627,6 +1045,11 @@ namespace UART_command_handlers
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::CONTROLLER_ID]) + ", "
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]) + ", "
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE]) + ", ");
+#else
+        (void)handler;
+        (void)exo_data;
+        (void)msg;
+#endif
     }
 
     inline static void update_error_code(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)

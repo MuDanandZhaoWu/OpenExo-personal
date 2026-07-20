@@ -285,6 +285,11 @@ MotorData::MotorData(config_defs::joint_id id, uint8_t* config_to_send)
     kd = 0;
     t_ff = 0;
     kt = 0;
+    current_feedback_limit = 0;
+    timeout_count = 0;
+    feedback_valid = false;
+    last_feedback_us = 0;
+    feedback_sequence = 0;
     
 };
 
@@ -561,4 +566,9 @@ void MotorData::reconfigure(uint8_t* config_to_send)
     kd = 0;
     t_ff = 0;
     last_command = 0;
+    current_feedback_limit = 0;
+    timeout_count = 0;
+    feedback_valid = false;
+    last_feedback_us = 0;
+    feedback_sequence = 0;
 };

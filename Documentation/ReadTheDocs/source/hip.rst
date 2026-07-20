@@ -9,3 +9,4 @@ Overview of the hip controllers.
 
    FranksCollinsHip
    ProportionalHipMomentController
+   FsrHipPd

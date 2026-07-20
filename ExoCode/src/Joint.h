@@ -71,7 +71,7 @@ class _Joint
         virtual void read_data(); 
 
         /**
-         * @brief Checks if we need to do the calibration for the motor and sensors and runs the calibration.
+         * @brief 判断电机与各传感器是否需要执行校准，若需要则启动校准流程      Checks if we need to do the calibration for the motor and sensors and runs the calibration.
          */
         virtual void check_calibration();         
 		
@@ -163,6 +163,9 @@ class HipJoint : public _Joint
         Step _step;                                     /**< Step Controller for Device Characterization */
         ProportionalHipMoment _proportional_hip_moment; /**< Proportional Hip Moment Conroller */
         CalibrManager _calibr_manager;                  /**< Calibration Manager "Controller" */
+		FsrHipPd _fsr_hip_pd;                             /**< FSR phase hip impedance controller */
+		uint8_t _active_controller_id = 0;
+		bool _controller_transition_pending = true;
 		
 };
 

@@ -22,6 +22,12 @@ uint8_t _Joint::right_motor_used_count = 0;
  * Uses initializer list for motor, controller, and torque sensor.
  * Only stores these objects, the id, exo_data pointer, and if it is left (for easy access)
  */
+/*
+ * 关节基类构造函数
+ * 输入参数：关节编号id、外骨骼全局数据结构体指针exo_data
+ * 通过初始化列表完成扭矩传感器实例初始化（注释原文提及电机、控制器，当前代码仅对扭矩传感器使用初始化列表）
+ * 该类仅持有以下内容：各类功能对象、关节ID、外骨骼数据指针、关节左右侧标记（方便快速判断左右腿/手臂）
+ */
 _Joint::_Joint(config_defs::joint_id id, ExoData* exo_data)
 : _torque_sensor(_Joint::get_torque_sensor_pin(id, exo_data)) // <-- Initializer list
 {
@@ -528,6 +534,7 @@ HipJoint::HipJoint(config_defs::joint_id id, ExoData* exo_data)
 , _step(id, exo_data)
 , _proportional_hip_moment(id, exo_data)
 , _calibr_manager(id, exo_data)
+, _fsr_hip_pd(id, exo_data)     //初始化控制器
 {
     #ifdef JOINT_DEBUG
         logger::print(_is_left ? "Left " : "Right ");
@@ -557,6 +564,7 @@ HipJoint::HipJoint(config_defs::joint_id id, ExoData* exo_data)
     // logger::print("\t");
     
     //Don't need to check side as we assume symmetry and create both side data objects. Setup motor from here as it will be easier to check which motor is used
+    //无需判断关节左右侧，程序默认外骨骼左右结构对称，且会预先创建左侧、右侧两套独立数据对象；在此处完成电机初始化配置，能更方便地匹配当前关节所使用的电机型号
     if(_joint_data->is_used)
     {
         #ifdef JOINT_DEBUG
@@ -639,17 +647,46 @@ HipJoint::HipJoint(config_defs::joint_id id, ExoData* exo_data)
     }
 };
 
+/*
+髋关节每个控制循环里真正执行的主函数：选择控制器、计算力矩命令、检查错误、控制电机开关，然后把命令发给电机
+*/
 void HipJoint::run_joint()
 {
     #ifdef JOINT_DEBUG
         logger::print("HipJoint::run_joint::Start");
     #endif
 
-    //Make sure the correct controller is running.
+    // 确认当前控制器       Make sure the correct controller is running.
     set_controller(_joint_data->controller.controller);
     
-    //Calculate the motor command
-    _joint_data->controller.setpoint = _controller->calc_motor_cmd();
+    //检查 FsrHipPd 控制器是否已经触发并锁定了安全故障
+    const bool fsr_fault_interlock = _fsr_hip_pd.is_fault_latched() &&
+        _joint_data->controller.controller !=
+            (uint8_t)config_defs::hip_controllers::fsr_hip_pd;
+    //如果故障已经锁定，并且用户试图切换到别的髋关节控制器，代码不会允许绕过这个故障, 不能靠换控制器逃过安全保护
+    if (fsr_fault_interlock)
+    {
+        // A latched FsrHipPd safety fault is joint-level: selecting another
+        // torque controller must not bypass the explicit faultRst sequence.
+        _joint_data->motor.enabled = false;
+        _joint_data->controller.setpoint = 0.0f;
+        _joint_data->controller.ff_setpoint = 0.0f;
+        _joint_data->controller.desired_torque = 0.0f;
+    }
+    //控制器切换时先输出零力矩
+    //这是一个安全缓冲，避免从一个控制器切到另一个控制器时，电机突然收到一个跳变力矩命令
+    else if (_controller_transition_pending)
+    {
+        _joint_data->controller.setpoint = 0.0f;
+        _joint_data->controller.ff_setpoint = 0.0f;
+        _joint_data->controller.desired_torque = 0.0f;
+        _controller_transition_pending = false;
+    }
+    //正常计算控制命令
+    else
+    {
+        _joint_data->controller.setpoint = _controller->calc_motor_cmd();
+    }
 
     //Check for joint errors
     const uint16_t exo_status = _data->get_status();
@@ -678,12 +715,12 @@ void HipJoint::run_joint()
         _motor->enable();
     }
 
-    //Send the new command to the motor.
+    //发送最终电机命令      Send the new command to the motor.
     _motor->transaction(_joint_data->controller.setpoint / _joint_data->motor.gearing);
 
     #ifdef JOINT_DEBUG
         logger::print("HipJoint::run_joint::Motor Command:: ");
-        logger::print(_controller->calc_motor_cmd());
+        logger::print(_joint_data->controller.setpoint);
         logger::print("\n");
     #endif
 
@@ -701,6 +738,14 @@ void HipJoint::set_controller(uint8_t controller_id)
         logger::print("Hip : set_controller : Controller ID : ");
         logger::println(controller_id);
     #endif
+
+    if (controller_id != _active_controller_id)
+    {
+        _fsr_hip_pd.deactivate();
+        //控制器切换标志位设为true，表示正在切换控制器
+        _controller_transition_pending = true;
+        _active_controller_id = controller_id;
+    }
 
     switch (controller_id)
     {
@@ -731,6 +776,9 @@ void HipJoint::set_controller(uint8_t controller_id)
             break;
 		case (uint8_t)config_defs::hip_controllers::calibr_manager:
             _controller = &_calibr_manager;
+            break;
+        case (uint8_t)config_defs::hip_controllers::fsr_hip_pd:
+            _controller = &_fsr_hip_pd;
             break;
         default :
             logger::print("Unkown Controller!\n", LogLevel::Error);

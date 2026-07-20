@@ -526,19 +526,16 @@ class QtExoDeviceManager(QtCore.QObject):
 
     @QtCore.Slot()
     def beginTrial(self):
-        """Mirror legacy beginTrial: start motors, calibrate torque, calibrate FSRs, send preset FSR values."""
+        """Request a validated trial start, then send the preset FSR thresholds."""
         if not self._ensure_connected():
             return
 
         async def _do():
             try:
                 await asyncio.sleep(1)
-                # Start motors/stream
+                # The communications MCU performs motor enable and one-time
+                # FSR calibration only after the Teensy confirms trial_on.
                 await self._client.write_gatt_char(UART_TX_UUID, b"E", response=False)
-                # Calibrate torque sensors 
-                # await self._client.write_gatt_char(UART_TX_UUID, b"H", response=False) # Commented out by ZL because added new button for torque calibration
-                # Calibrate FSRs
-                await self._client.write_gatt_char(UART_TX_UUID, b"L", response=False)
                 # Send preset FSR values
                 await self._client.write_gatt_char(UART_TX_UUID, b"R", response=False)
                 for fsr_value in (self._curr_left_fsr_value, self._curr_right_fsr_value):

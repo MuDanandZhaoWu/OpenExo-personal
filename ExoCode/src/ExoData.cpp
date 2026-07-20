@@ -30,6 +30,13 @@ ExoData::ExoData(uint8_t* config_to_send)
     this->error_code = static_cast<int>(NO_ERROR);
     this->error_joint_id = 0;
     this->user_paused = false;
+    this->start_request_pending = false;
+    this->stop_request_pending = false;
+    this->start_request_after_stop = false;
+    this->start_fsr_calibration_sent = false;
+    this->status_request_token = 0;
+    this->pending_start_token = 0;
+    this->pending_stop_token = 0;
 
     //If statement that determines if torque sensor is used for that joint (See Board.h for available torque sensor pins)
     if ((config_to_send[config_defs::hip_use_torque_sensor_idx] == (uint8_t)config_defs::use_torque_sensor::yes))
@@ -65,6 +72,13 @@ ExoData::ExoData(uint8_t* config_to_send)
 
 void ExoData::reconfigure(uint8_t* config_to_send) 
 {
+    start_request_pending = false;
+    stop_request_pending = false;
+    start_request_after_stop = false;
+    start_fsr_calibration_sent = false;
+    status_request_token = 0;
+    pending_start_token = 0;
+    pending_stop_token = 0;
     left_side.reconfigure(config_to_send);
     right_side.reconfigure(config_to_send);
 };
@@ -105,7 +119,7 @@ JointData* ExoData::get_joint_with(uint8_t id)
     JointData* j_data = NULL;
     switch (id)
     {
-    case (uint8_t)config_defs::joint_id::left_hip:
+    case (uint8_t)config_defs::joint_id::left_hip:  //只是属于switch_case语句的冒号...
         j_data = &left_side.hip;
         break;
     case (uint8_t)config_defs::joint_id::left_knee:
@@ -166,35 +180,53 @@ uint16_t ExoData::get_status(void)
     return this->_status;
 }
 
-void ExoData::set_default_parameters()
+bool ExoData::set_default_parameters()
 {
+    bool success = true;
 #if defined(ARDUINO_TEENSY36)  || defined(ARDUINO_TEENSY41)
-    this->for_each_joint([this](JointData* j_data, float* args)
+    this->for_each_joint([this, &success](JointData* j_data, float* args)
         {
             if (j_data->is_used)
             {
-                set_controller_params((uint8_t)j_data->id, j_data->controller.controller, 0, this);
+                const uint8_t error = set_controller_params(
+                    (uint8_t)j_data->id,
+                    j_data->controller.controller, 0, this);
+                if (error != 0)
+                {
+                    print_param_error_message(error);
+                    success = false;
+                }
             }
         }
     );
 #endif
+    return success;
 }
 
-void ExoData::set_default_parameters(uint8_t id)
+bool ExoData::set_default_parameters(uint8_t id)
 {
+    bool success = true;
     #if defined(ARDUINO_TEENSY36)  || defined(ARDUINO_TEENSY41)
     float f_id = static_cast<float>(id);
     this->for_each_joint(
-        [this](JointData* j_data, float* args) 
+        [this, &success](JointData* j_data, float* args)
         {
             if (j_data->is_used && (uint8_t)j_data->id == static_cast<uint8_t>(args[0]))
             {
-                set_controller_params((uint8_t)j_data->id, j_data->controller.controller, 0, this);
+                const uint8_t error = set_controller_params(
+                    (uint8_t)j_data->id,
+                    j_data->controller.controller, 0, this);
+                if (error != 0)
+                {
+                    print_param_error_message(error);
+                    success = false;
+                }
             }
         },
         &f_id   //for_each_joint函数的两个参数,一个是这里的lambda表达式, 一个是&f_id
     );          //通过泛型回调args被替换为了&f_id(参考for_each_joint在ExoData.h中的声明)
     #endif
+    return success;
 }
 
 void ExoData::start_pretrial_cal()

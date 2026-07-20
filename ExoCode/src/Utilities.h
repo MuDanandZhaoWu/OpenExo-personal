@@ -83,6 +83,22 @@ namespace utils
      * 
      * @return the state of the trigger.
      */
+    /**
+     * @brief 根据当前采样值与历史输出状态，返回施密特触发器最新输出状态
+     * 入参支持浮点，传入整型会自动做类型提升，超大整型数值使用时可能存在精度问题。
+     * 本函数原本可改用模板实现，但因存在固定布尔型参数（is_high），多类型混用会出现兼容问题，故暂未使用模板。
+     * 施密特触发器用于带噪声的信号电平判定，消除信号抖动误触发：
+     * 触发器当前为低电平状态时，信号必须超过上限阈值，才会切换为高电平；
+     * 触发器当前为高电平状态时，信号必须低于下限阈值，才会切换为低电平。
+     * 该机制可避免信号在单阈值附近反复抖动时，状态频繁误翻转。
+     * 
+     * @param value 当前信号采样读数
+     * @param is_high 触发器当前的输出电平状态
+     * @param lower_threshold 高电平切为低电平所需低于的下限阈值
+     * @param upper_threshold 低电平切为高电平所需超过的上限阈值
+     * 
+     * @return 触发器更新后的电平状态
+     */
     bool schmitt_trigger(float value, bool is_high, float lower_threshold, float upper_threshold);
     
     /**
@@ -292,6 +308,12 @@ namespace utils
      * 
      * @param set Queue of data to calculate the mean and standard deviation of
      * @return std::pair<float, float> Mean and standard deviation, respectively
+     */
+    /**
+     * @brief 输入一组数据，计算并返回该组数据的均值与标准差
+     *
+     * @param set 待计算均值、标准差的浮点数据队列
+     * @return std::pair<float, float> 成对返回两个浮点数，依次为均值、标准差
      */
     std::pair<float, float> online_std_dev(std::queue<float> set);
     

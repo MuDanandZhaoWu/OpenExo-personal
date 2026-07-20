@@ -144,7 +144,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._start_csv_auto()
         except Exception:
             pass
-        # Begin trial sequence (E -> L -> R + thresholds) to ensure FSRs stream
+        # Begin trial sequence (E -> validated firmware handshake; R + thresholds).
         try:
             self.qt_dev.beginTrial()
         except Exception:

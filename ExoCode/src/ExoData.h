@@ -136,13 +136,13 @@ class ExoData
          * @brief 这是为所有在使用的的关节执行设置默认参数    Set the default controller parameters for the current controller. These are the first row in the controller csv file on the SD Card
          *
          */
-        void set_default_parameters();
+        bool set_default_parameters();
         
         /**
          * @brief 为指定控制器设置默认控制参数。这些参数取自SD卡上控制器CSV文件的第一行       Set the default controller parameters for the current controller. These are the first row in the controller csv file on the SD Card
          * 
          */
-        void set_default_parameters(uint8_t id);
+        bool set_default_parameters(uint8_t id);
 
         /**
          * @brief 启动试验前校准流程    Start the pretrial calibration process
@@ -187,6 +187,14 @@ class ExoData
         int arm_1_torque_flag = 0;  /**< Flag to determine if we want to use torque sensor for that joint */
         int arm_2_torque_flag = 0;  /**< Flag to determine if we want to use torque sensor for that joint */
 		
+        bool start_request_pending; /**< Nano-side two-phase start handshake state. */
+        bool stop_request_pending; /**< Blocks a new start until the preceding stop is acknowledged. */
+        bool start_request_after_stop; /**< Queues a Start pressed while the stop boundary is pending. */
+        bool start_fsr_calibration_sent; /**< Prevents a Start retry from restarting the current session's FSR calibration. */
+        uint16_t status_request_token; /**< Monotonic Nano-side request token for status ACK correlation. */
+        uint16_t pending_start_token;
+        uint16_t pending_stop_token;
+
         private:
         uint16_t _status;           /**< Status of the system*/
 };

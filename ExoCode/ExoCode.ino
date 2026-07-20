@@ -116,7 +116,8 @@ void loop()
 {
     static bool first_run = true;
     
-    //创建数据对象  Create the data object
+    //创建数据对象，入口函数唯一的ExoData实例，保证系统共用同一套数据 Create the data object
+    //static关键字保证exo_data在这个程序的声明周期内只创建一次，避免重复初始化和数据冲突
     static ExoData exo_data(config_info::config_to_send);     
 
     //Print to make sure object was created
@@ -127,7 +128,7 @@ void loop()
         }
     #endif
 
-    //Create the exo object
+    //从这里开始, exo_data实例被一路传递到motor一层, 每一层级的数据继承自它的上一层 Create the exo object
     static Exo exo(&exo_data);                                
 
     //Print to make sure object was created

@@ -1,0 +1,6 @@
+5,"header size; first five rows are metadata",,,,,,,,,,,,,,,,,,,,,,,,
+25,"parameter count",,,,,,,,,,,,,,,,,,,,,,,,
+,FSR-phase hip impedance controller; torque is joint-side Nm,,,,,,,,,,,,,,,,,,,,,,,
+,angles are deg; velocity is rad/s; current units require hardware verification,,,,,,,,,,,,,,,,,,,,,,,
+enable,ffPh1,ffNm1,ffPh2,ffNm2,ffPh3,ffNm3,ref0Deg,ref50Deg,kp,kd,velAlpha,trqLim,slewLim,softADeg,hardADeg,softVel,hardVel,warnAmp,tripAmp,tripCount,fbToutMs,gaitToMs,rampMs,faultRst
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0

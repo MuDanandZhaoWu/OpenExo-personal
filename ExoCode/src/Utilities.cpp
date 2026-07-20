@@ -1,6 +1,6 @@
 /*
  * Takes in the joint id and returns if the left indicator bit is set as a bool
- *
+ 
  */
 #include "Utilities.h"
 #include "Logger.h"
@@ -30,6 +30,10 @@ namespace utils
         return id & (~(uint8_t)config_defs::joint_id::left & ~(uint8_t)config_defs::joint_id::right);  //Return the joint id with the left/right indicators masked out.  
     };
     
+    /*
+     * 如果上一轮已经是高状态，那么当前值只要还高于下阈值，就继续保持高状态
+     * 如果上一轮是低状态，那么当前值必须超过上阈值，才切换成高状态
+     */
     bool schmitt_trigger(float value, bool is_high, float lower_threshold, float upper_threshold)
     {
         bool trigger = 0;

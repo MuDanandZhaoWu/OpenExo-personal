@@ -525,6 +525,87 @@ public:
 };
 
 /**
+ * @brief Hip impedance controller with FSR gait-phase feed-forward.
+ *
+ * The controller uses motor-derived joint position and velocity feedback. It
+ * does not use the torque-sensor PID loop and does not implement a current PID.
+ * Returned commands are joint-side torque in Nm.
+ */
+/**
+ * @brief 搭载FSR步态相位前馈的髋关节阻抗控制器
+ *
+ * 本控制器以电机解算输出的关节位置、速度作为反馈信号；
+ * 不使用力矩传感器构成PID闭环，也未搭建电流PID控制环。
+ * 输出的控制指令为关节侧力矩，单位：牛米(N·m)。
+ */
+class FsrHipPd : public _Controller
+{
+public:
+    FsrHipPd(config_defs::joint_id id, ExoData* exo_data);
+    ~FsrHipPd() {};
+
+    float calc_motor_cmd();
+    void reset();
+    void deactivate();
+    bool is_fault_latched() const { return _state == State::FAULT_LATCHED; }
+
+private:
+    // 控制器状态枚举
+    enum class State : uint8_t
+    {
+        DISABLED,       // 控制器未启用，保持零力矩输出
+        WAIT_FEEDBACK,  // 等待新的有效电机反馈，随后记录关节中立位置
+        WAIT_GAIT,      // 已获得电机反馈，等待有效步态相位和着地事件
+        RAMPING,        // 按设定时间将控制力矩从零逐渐增加到正常值
+        ACTIVE,         // 正常控制状态，持续计算并输出关节力矩
+        FAULT_LATCHED   // 故障锁存状态，故障已锁存，禁用电机并保持零输出，等待安全复位
+    };
+
+    // 故障原因枚举
+    enum class FaultReason : uint8_t
+    {
+        NONE,               // 当前没有故障
+        INVALID_PARAMETER,  // 控制参数或计算结果非法，例如出现 NaN/无穷值
+        FEEDBACK_TIMEOUT,    // 在规定时间内未收到新的有效电机反馈
+        GAIT_TIMEOUT,        // 步态相位无效或在规定时间内未检测到着地事件
+        HARD_POSITION,      // 关节相对位置达到硬限位阈值
+        HARD_VELOCITY,      // 关节速度达到硬限速阈值
+        OVERCURRENT,        // 电机电流连续达到过流跳闸条件
+        ESTOP               // 急停信号被触发
+    };
+
+    State _state;                 // 控制器当前所处的运行状态
+    FaultReason _fault_reason;    // 最近一次锁存故障的原因
+    float _neutral_position;      // 启动时记录的关节中立位置，用作相对位置和参考轨迹的基准
+    float _filtered_velocity;     // 经过指数加权移动平均滤波的关节速度
+    float _previous_command;      // 上一次实际输出的关节力矩，用于限制力矩变化速率
+    float _parameter_snapshot[controller_defs::fsr_hip_pd::num_parameter]; // 参数快照，用于检测运行期间的参数变化
+    uint32_t _state_entry_ms;     // 进入当前状态时的毫秒时间戳，用于状态超时和渐增计时
+    uint32_t _last_ground_strike_ms; // 最近一次检测到足部着地事件的毫秒时间戳
+    uint32_t _previous_command_us;   // 上一次计算力矩指令时的微秒时间戳，用于变化率限制
+    uint32_t _feedback_wait_started_us; // 开始等待电机反馈时的微秒时间戳，排除等待前的旧反馈
+    uint32_t _last_feedback_sequence;   // 上一次处理的电机反馈序号，用于识别新反馈数据
+    uint16_t _overcurrent_count;        // 连续新反馈中达到过流阈值的次数
+    bool _neutral_valid;                // 是否已从有效电机反馈中取得中立位置
+    bool _parameter_snapshot_valid;     // 参数快照是否已初始化并可用于比较
+    bool _last_fault_reset;             // 上一周期的故障复位电平，用于检测复位信号上升沿
+
+    float _zero_output();
+    bool _parameters_valid() const;
+    bool _parameters_changed() const;
+    void _capture_parameters();
+    bool _feedback_fresh() const;
+    bool _phase_valid() const;
+    bool _safe_to_reset_fault() const;
+    void _enter_state(State state);
+    void _latch_fault(FaultReason reason);
+    float _feedforward_torque(float percent_gait) const;
+    float _reference_offset(float percent_gait) const;
+    float _apply_soft_limits(float torque, float relative_position, float velocity) const;
+    float _apply_slew_limit(float torque, uint32_t now_us);
+};
+
+/**
  * @brief Proportional Hip Moment Controller
  * This controller is for the hip joint
  * Applies a torque based on an estimate of the hip moment.
@@ -561,8 +642,8 @@ public:
     int stance_counter;             /* Keeps track of the number of iterations that have occured in current Stance Phase. */
     int swing_duration;             /* Stores the duration of the previous swing phase. */
  
-    float setpoint;                 /* Stores the calculated feed-foward setpoint for the hip command. */
-    float old_setpoint;             /* Stores the setpoint at the end of State 3 to be used for setpoint calculation in State 1. */
+    float setpoint;                 /* 存储计算得出的髋关节前馈控制目标值       Stores the calculated feed-foward setpoint for the hip command. */
+    float old_setpoint;             /* 缓存状态3结束时刻的控制目标值，用于状态1下的目标值求解运算       Stores the setpoint at the end of State 3 to be used for setpoint calculation in State 1. */
 
     int state_count_12;             /* Keeps track of the number of iterations that have occured in the State 1 - to - State 2 Transition. */
     int state_count_23;             /* Keeps track of the number of iterations that have occured in the State 2 - to - State 3 Transition. */

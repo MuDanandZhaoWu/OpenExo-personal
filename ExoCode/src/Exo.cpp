@@ -45,9 +45,12 @@ Exo::Exo(ExoData* exo_data)
         logger::println("Exo :: Constructor : _data set");
     #endif
 
-    pinMode(logic_micro_pins::motor_stop_pin,INPUT_PULLUP);
+    if (logic_micro_pins::motor_stop_available)
+    {
+        pinMode(logic_micro_pins::motor_stop_pin, INPUT_PULLUP);
+    }
     
-    #ifdef EXO_DEBUG
+    #ifdef EXO_DEBUG 
         logger::println("Exo :: Constructor : motor_stop_pin Mode set");
     #endif
 };
@@ -87,18 +90,91 @@ bool Exo::run()
 
         //Check the estop
         // Emergency Stop 急停开关
-        data->estop = 0;    // By default, the estop functionality is disabled. To enable it, comment this line out and uncomment the line below.
-        //data->estop = digitalRead(logic_micro_pins::motor_stop_pin);
+        // DEMO-ONLY OVERRIDE: keep this false while the presentation setup has
+        // no validated physical E-stop. Change only this value to true after
+        // the switch wiring and polarity have been verified on the target PCB.
+        static constexpr bool enable_physical_estop = false;
 
-        // 如果急停开关的引脚为低电平，禁用所有电机
+        // INPUT_PULLUP + a normally-closed stop loop: LOW permits operation;
+        // an opened loop, disconnected wire, or pressed stop reads HIGH.
+        const bool physical_estop_triggered = logic_micro_pins::motor_stop_available &&
+            digitalRead(logic_micro_pins::motor_stop_pin) ==
+                logic_micro_pins::motor_stop_active_state;
+        data->estop = enable_physical_estop && physical_estop_triggered;
+
+        // The complete E-stop shutdown path remains active for later restoration.
         if (data->estop)
         {
             data->for_each_joint([](JointData* j_data, float* args){j_data->motor.enabled = false;});
         }
+
+        const uint16_t status_at_cycle_start = data->get_status();
+        if (status_at_cycle_start == status_defs::messages::trial_on &&
+            prev_status != status_defs::messages::trial_on)
+        {
+            // Do not reuse a phase estimate from a previous trial/calibration.
+            left_side.clear_step_time_estimate();
+            right_side.clear_step_time_estimate();
+        }
+        prev_status = status_at_cycle_start;
 		
+        //Remember the status that initiated an FSR calibration. Side::check_calibration
+        //temporarily replaces it with fsr_calibration/fsr_refinement; restore only
+        //after both sides have completed so a strict trial_on controller can restart.
+        static bool fsr_calibration_session = false;
+        static uint16_t status_after_fsr_calibration = status_defs::messages::trial_off;
+        const bool fsr_pending_before =
+            (data->left_side.is_used &&
+             (data->left_side.do_calibration_toe_fsr ||
+              data->left_side.do_calibration_refinement_toe_fsr ||
+              data->left_side.do_calibration_heel_fsr ||
+              data->left_side.do_calibration_refinement_heel_fsr)) ||
+            (data->right_side.is_used &&
+             (data->right_side.do_calibration_toe_fsr ||
+              data->right_side.do_calibration_refinement_toe_fsr ||
+              data->right_side.do_calibration_heel_fsr ||
+              data->right_side.do_calibration_refinement_heel_fsr));
+        const uint16_t status_before_fsr = data->get_status();
+        if (fsr_pending_before && !fsr_calibration_session)
+        {
+            fsr_calibration_session = true;
+            status_after_fsr_calibration =
+                status_before_fsr == status_defs::messages::trial_on
+                    ? status_defs::messages::trial_on
+                    : status_defs::messages::trial_off;
+        }
+        else if (fsr_calibration_session &&
+                 status_before_fsr == status_defs::messages::trial_off)
+        {
+            // A stop request received during calibration must win.
+            status_after_fsr_calibration = status_defs::messages::trial_off;
+        }
+
         //Record the side data and send new commands to the motors.
         left_side.run_side();
         right_side.run_side();
+
+        const bool fsr_pending_after =
+            (data->left_side.is_used &&
+             (data->left_side.do_calibration_toe_fsr ||
+              data->left_side.do_calibration_refinement_toe_fsr ||
+              data->left_side.do_calibration_heel_fsr ||
+              data->left_side.do_calibration_refinement_heel_fsr)) ||
+            (data->right_side.is_used &&
+             (data->right_side.do_calibration_toe_fsr ||
+              data->right_side.do_calibration_refinement_toe_fsr ||
+              data->right_side.do_calibration_heel_fsr ||
+              data->right_side.do_calibration_refinement_heel_fsr));
+        if (fsr_calibration_session && !fsr_pending_after)
+        {
+            const uint16_t current_status = data->get_status();
+            if (current_status == status_defs::messages::fsr_calibration ||
+                current_status == status_defs::messages::fsr_refinement)
+            {
+                data->set_status(status_after_fsr_calibration);
+            }
+            fsr_calibration_session = false;
+        }
 		
         //Update status LED
         status_led.update(data->get_status());

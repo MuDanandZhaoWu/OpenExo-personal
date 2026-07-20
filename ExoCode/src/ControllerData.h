@@ -185,6 +185,40 @@ namespace controller_defs                   /**< Stores the parameter indexes fo
         const uint8_t num_parameter = 9;                        //参数总数
     }
 
+    /**
+     * Hip impedance controller using motor position/velocity feedback and
+     * FSR-derived gait phase feed-forward. All torque values are joint-side Nm.
+     */
+    namespace fsr_hip_pd
+    {
+        const uint8_t enable_idx = 0;
+        const uint8_t ff_phase_1_idx = 1;
+        const uint8_t ff_torque_1_idx = 2;
+        const uint8_t ff_phase_2_idx = 3;
+        const uint8_t ff_torque_2_idx = 4;
+        const uint8_t ff_phase_3_idx = 5;
+        const uint8_t ff_torque_3_idx = 6;
+        const uint8_t reference_0_deg_idx = 7;      //步态处于 0% 或 100% 时的参考角度偏移
+        const uint8_t reference_50_deg_idx = 8;     //步态处于 50% 时的参考角度偏移
+        const uint8_t kp_idx = 9;
+        const uint8_t kd_idx = 10;
+        const uint8_t velocity_alpha_idx = 11;
+        const uint8_t torque_limit_idx = 12;
+        const uint8_t torque_slew_limit_idx = 13;
+        const uint8_t soft_angle_deg_idx = 14;
+        const uint8_t hard_angle_deg_idx = 15;
+        const uint8_t soft_velocity_idx = 16;
+        const uint8_t hard_velocity_idx = 17;
+        const uint8_t current_warning_idx = 18;
+        const uint8_t current_trip_idx = 19;
+        const uint8_t current_trip_count_idx = 20;
+        const uint8_t feedback_timeout_ms_idx = 21;
+        const uint8_t gait_timeout_ms_idx = 22;
+        const uint8_t ramp_time_ms_idx = 23;
+        const uint8_t fault_reset_idx = 24;
+        const uint8_t num_parameter = 25;   
+    }
+
     namespace proportional_hip_moment
     {
         const uint8_t extension_setpoint_idx = 0;               //Parameter for extension setpoint 
@@ -241,7 +275,7 @@ namespace controller_defs                   /**< Stores the parameter indexes fo
         const uint8_t num_parameter = 17;
     }
 
-    const uint8_t max_parameters = spv2::num_parameter;         //This should be the largest of all the num_parameters
+    const uint8_t max_parameters = fsr_hip_pd::num_parameter;   //该常量值必须为所有控制器里参数总数的最大值        This should be the largest of all the num_parameters
 }
 
 /**
@@ -265,15 +299,18 @@ class ControllerData {
          * @return uint8_t parameter length 
          */
         uint8_t get_parameter_length();
+
+        /** @brief Get parameter length for a specific controller ID on this joint. */
+        uint8_t get_parameter_length(uint8_t controller_id);
         
         
         uint8_t controller;                                 /**< Id of the current controller */
         config_defs::JointType joint;                       /**< Id of the current joint */
 
-        float setpoint;                                     /**< Controller setpoint, basically the motor command. */
+        float setpoint;                                     /**< 控制器设定值，本质就是下发给电机的控制指令     Controller setpoint, basically the motor command. */
         float ff_setpoint;                                  /**< 前馈设定值，仅在闭环控制器中进行更新   Feed forwared setpoint, only updated in closed loop controllers */
         float desired_torque;                               /**< Desired torque command for the controller */
-        float parameters[controller_defs::max_parameters];  /**< Parameter list for the controller see the controller_defs namespace for the specific controller. */
+        float parameters[controller_defs::max_parameters];  /**< 控制器参数存储数组，各控制器对应的参数下标定义请查看 controller_defs 命名空间      Parameter list for the controller see the controller_defs namespace for the specific controller. */
         uint8_t parameter_set;                              /**< Temporary value used to store the parameter set while we are pulling from the sd card. */
 
         float filtered_torque_reading;                      /**< 滤波后的扭矩读数，用于对扭矩传感器信号进行滤波处理     Filtered torque reading, used for filtering torque signal */

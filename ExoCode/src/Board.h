@@ -92,6 +92,8 @@
                 
                 //Pin to Stop the Motors
                 const unsigned int motor_stop_pin = 6;
+                const uint8_t motor_stop_active_state = HIGH;
+                const bool motor_stop_available = true;
             #endif
             
             const unsigned int enable_left_pin[] = {not_connected_pin, not_connected_pin};
@@ -193,6 +195,8 @@
                 
                 //Pin to Stop the Motors
                 const unsigned int motor_stop_pin = 9;       
+                const uint8_t motor_stop_active_state = HIGH;
+                const bool motor_stop_available = true;
                 
                 //Motor enable Pins
                 const unsigned int enable_left_pin[] = {28, 29};
@@ -308,6 +312,8 @@
                 
                 //Pin to Stop the Motors
                 const unsigned int motor_stop_pin = 9;
+                const uint8_t motor_stop_active_state = HIGH;
+                const bool motor_stop_available = true;
 
                 
                 //Motor enable Pins
@@ -340,7 +346,8 @@
             const unsigned int spi_mode = 16;
         };
         #endif
-    #elif BOARD_VERSION == AK_Board_V0_5_1 
+
+    #elif BOARD_VERSION == AK_Board_V0_5_1   //这是我们所使用的PCB，下面是对应的引脚定义
        
         #include "Arduino.h"
         namespace logic_micro_pins  //Teensy
@@ -425,6 +432,8 @@
                 
                 //Pin to Stop the Motors
                 const unsigned int motor_stop_pin = 9;
+                const uint8_t motor_stop_active_state = HIGH;
+                const bool motor_stop_available = true;
                 
                 //Motor enable Pins
                 const unsigned int enable_left_pin[] = {28, 29};
@@ -440,6 +449,7 @@
             const unsigned int motor_enable_off_state = LOW;
         };
         
+        //Arduino Nano的引脚定义
         #if defined(ARDUINO_ARDUINO_NANO33BLE) | defined(ARDUINO_NANO_RP2040_CONNECT)
         namespace coms_micro_pins  //Nano
         {
@@ -540,6 +550,8 @@
 				
 				//Pin to Stop the Motors
 				const unsigned int motor_stop_pin = not_connected_pin;
+				const uint8_t motor_stop_active_state = HIGH;
+				const bool motor_stop_available = false;
 				
 				//Motor enable Pins
 				const unsigned int enable_left_pin[] = {33};

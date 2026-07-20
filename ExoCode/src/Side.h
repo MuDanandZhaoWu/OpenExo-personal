@@ -53,6 +53,7 @@ class Side
         void run_side(); 
 		
         /**
+         * @brief 检查标定标志位是否已置位，若已置位则执行标定流程。
          * @brief Checks if calibration flags are set, and runs calibration if they are.
          */
         void check_calibration();  
@@ -61,11 +62,18 @@ class Side
          * @brief Reads motor data from each motor used on that side and stores the values
          * Reads the FSR, detects ground strike, and calculates percent gait.
          * Sets the values to the corresponding place in data class.
-         */
+         * 
+         * @brief 读取该侧所有电机的数据并进行存储
+         * 采集FSR传感器数据、检测足底触地信号、计算步态百分比
+         * 并将所有数据赋值到数据类的对应成员中
+         **/
         void read_data(); 
 		
         /**
          * @brief Sends new control command to the motors used on that side, based on the defined controllers
+         */
+        /**
+         * @brief 根据预先配置的控制器算法，向该侧所有启用的电机下发最新控制指令
          */
         void update_motor_cmds();   
 		
@@ -76,6 +84,7 @@ class Side
 		
         /**
          * @brief Clears the step time estimate for when it gets off by more than can be adjusted for.
+         * 当步态周期预估值偏差过大、超出自适应调节修正范围时，清空步态时长预估相关缓存数据
          */
         void clear_step_time_estimate();
 
@@ -88,7 +97,7 @@ class Side
 	private:
         /**
          * @brief Applies the FSR thresholds set in the data class to the FSRs
-         * 
+         *        将数据类中已配置的FSR阈值参数生效至足底压力传感器
          */
         void _check_thresholds();
 		
@@ -98,6 +107,13 @@ class Side
          * Returns the percent gait which saturates at 100%
          * 
          * @return percent gait from heel strike
+         */
+        /**
+         * @brief 根据足底接地传感器采集状态，结合前几步平均单步时长预估周期，计算步态周期百分比
+         * 返回步态进度值，数值上限限制为100%（饱和输出）
+         * 从本侧最近一次足部着地开始，当前已经完成了预计步态周期的百分之多少
+         * 
+         * @return 以足跟落地时刻为起点的步态周期百分比
          */
         float _calc_percent_gait();
 
@@ -117,6 +133,7 @@ class Side
          *
          * @return percent swing
          */
+        
         float _calc_percent_swing();
         
         /**
@@ -124,6 +141,12 @@ class Side
          * Should only be called when a ground strike has occurred.
          *
          * @return expected duration in ms 
+         */
+        /**
+         * @brief 求取最近N次完整步态的耗时平均值，计算预估单步周期时长
+         * 仅当检测到足部落地触地事件时才可调用该函数
+         *
+         * @return 预估单步时长，单位为毫秒(ms)
          */
         float _update_expected_duration();
         
@@ -174,7 +197,7 @@ class Side
         
         //FSR objects for the side. 
         FSR _heel_fsr;                        /**< Heel force sensitive resistor, typically is a raw value */
-		FSR_Regressed _toe_fsr;               /**< Toe force sensitive resistor, typically is a regressed value */
+		FSR_Regressed _toe_fsr;               /**< 组件的fsr涉及前馈        Toe force sensitive resistor, typically is a regressed value */
 
         //  该侧肢体的倾角检测对象      Inclination object for the side
         InclinationDetector* inclination_detector;
@@ -184,8 +207,8 @@ class Side
         bool _prev_heel_contact_state;              /**< Prev heel contact state used for ground strike detection */
         bool _prev_toe_contact_state;               /**< Prev toe contact state used for ground strike detection */
 
-        bool _prev_toe_contact_state_toe_off;       /**< Prev toe off state used for toe off detection */
-        bool _prev_toe_contact_state_toe_on;        /**< Prev toe off state used for toe off detection */
+        bool _prev_toe_contact_state_toe_off;       /**< 保存上一帧脚趾触地状态，专门用于检测脚趾离地（toe-off）事件        Prev toe off state used for toe off detection */
+        bool _prev_toe_contact_state_toe_on;        /**< 保存上一帧脚趾触地状态，专门用于检测脚趾着地（toe-on）事件         Prev toe off state used for toe off detection */
         
         /**< 选取最近的若干步数据来预估期望运动时长，用于步态百分比的计算 */
         static const uint8_t _num_steps_avg = 3;    /**< Number of prior steps used to estimate the expected duration, used for percent gait calculation */

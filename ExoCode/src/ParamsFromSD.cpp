@@ -4,6 +4,146 @@
 
 #if defined(ARDUINO_TEENSY36)  || defined(ARDUINO_TEENSY41)
 
+    namespace
+    {
+        bool discard_current_line(File& file)
+        {
+            while (file.available())
+            {
+                if (file.read() == '\n')
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool seek_parameter_set(File& file, uint8_t header_size,
+                                uint8_t set_num, uint8_t& parameter_count,
+                                float* parsed_parameters)
+        {
+            if (parsed_parameters == nullptr)
+            {
+                return false;
+            }
+            for (uint8_t i = 0; i < controller_defs::max_parameters; ++i)
+            {
+                parsed_parameters[i] = 0.0f;
+            }
+
+            if (header_size < 2)
+            {
+                return false;
+            }
+
+            parameter_count = 0;
+            const uint16_t lines_to_skip =
+                (uint16_t)header_size + (uint16_t)set_num;
+            for (uint16_t line = 0; line < lines_to_skip; ++line)
+            {
+                if (line == 1)
+                {
+                    const long count = file.parseInt();
+                    if (count <= 0 || count > controller_defs::max_parameters)
+                    {
+                        return false;
+                    }
+                    parameter_count = (uint8_t)count;
+                }
+                if (!discard_current_line(file))
+                {
+                    return false;
+                }
+            }
+
+            // A newline at the end of the final existing preset is not proof
+            // that another preset follows it. Validate the target row before
+            // allowing callers to parse values from it.
+            if (!file.available())
+            {
+                return false;
+            }
+            const unsigned long target_start = file.position();
+            String target_line = file.readStringUntil('\n');
+            target_line.trim();
+            if (target_line.length() == 0)
+            {
+                return false;
+            }
+
+            // Parse every declared field exactly once into a temporary buffer.
+            // Callers commit this buffer only after the complete row validates,
+            // so malformed/truncated rows cannot partially update live values.
+            uint16_t token_start = 0;
+            for (uint8_t i = 0; i < parameter_count; ++i)
+            {
+                const int comma = target_line.indexOf(',', token_start);
+                const uint16_t token_end = comma < 0
+                    ? (uint16_t)target_line.length()
+                    : (uint16_t)comma;
+                String token = target_line.substring(token_start, token_end);
+                token.trim();
+                if (token.length() == 0)
+                {
+                    return false;
+                }
+                char* parse_end = nullptr;
+                const char* token_text = token.c_str();
+                const float value = strtof(token_text, &parse_end);
+                if (parse_end == token_text || *parse_end != '\0' ||
+                    !isfinite(value))
+                {
+                    return false;
+                }
+                parsed_parameters[i] = value;
+                if (comma < 0)
+                {
+                    if (i + 1 < parameter_count)
+                    {
+                        return false;
+                    }
+                    break;
+                }
+                token_start = (uint16_t)comma + 1;
+            }
+
+            if (!file.seek(target_start))
+            {
+                return false;
+            }
+            return true;
+        }
+
+        uint8_t parameter_file_error(uint8_t joint_id)
+        {
+            return utils::update_bit(
+                utils::get_joint_type(joint_id), 1,
+                param_error::file_not_found_idx);
+        }
+
+        bool parameter_count_is_compatible(JointData* joint_data,
+                                           uint8_t controller_id,
+                                           uint8_t declared_count)
+        {
+            if (joint_data == nullptr)
+            {
+                return false;
+            }
+            const uint8_t expected_count =
+                joint_data->controller.get_parameter_length(controller_id);
+            if (declared_count == expected_count && expected_count > 0)
+            {
+                return true;
+            }
+
+            // Preserve the repository's four legacy spline CSV files. They
+            // declare 15 fields while the existing spline data model exposes
+            // 16; the historical loader likewise populated only the first 15.
+            return expected_count == controller_defs::spline::num_parameter &&
+                   declared_count == 15;
+        }
+    }
+
     void print_param_error_message(uint8_t error_type)
     {
         //logger::print(utils::get_is_left(error_type)? "Left " : "Right ");
@@ -61,10 +201,19 @@
         std::string filename;       // 存储参数文件的文件名（字符串格式）
         uint8_t header_size;        // 参数前需要跳过的表头行数     Number of lines to skip before the parameters
         uint8_t param_num_in_file;  // 文件中待读取的参数数量   Number of parameters to pull in
-        uint8_t line_to_read;       // 读取参数的目标行     Line to read the parameters from
         uint8_t error_type = 0;     // 错误码存储变量   Error message holder
 
        
+        float parsed_parameters[controller_defs::max_parameters] = {0};
+        JointData* target_joint = exo_data == nullptr
+            ? nullptr
+            : exo_data->get_joint_with(joint_id);
+        if (target_joint == nullptr ||
+            target_joint->controller.get_parameter_length(controller_id) == 0)
+        {
+            return parameter_file_error(joint_id);
+        }
+
         switch(utils::get_joint_type(joint_id))
         {
             case (uint8_t)config_defs::joint_id::hip:
@@ -108,6 +257,7 @@
                     后续就可以用 param_file 读取文件里的控制器参数Open File
                     */
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
                     #ifdef SD_PARAM_DEBUG
                         logger::print("set_controller_params : ");
@@ -116,7 +266,7 @@
                     #endif
 
                     //File 类重载了布尔判断, 所以可以进行文件是否成功打开的判断     Check file exists
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {   
                         while(param_file.available())
                         {
@@ -129,30 +279,16 @@
                             #endif
 
                             //Skip to the line we need
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
-                            { 
-                                //First value in second line should be parameter number
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-
-                                    #ifdef SD_PARAM_DEBUG
-                                        logger::print("set_controller_params : Number of parameters in file = ");
-                                        logger::println(param_num_in_file);
-                                    #endif    
-                                }
-
-                                //Keep going through the file till the next new line. This is so it will restart if timeout happens.          
-                                while(!param_file.findUntil('\n','\n'))
-                                {
-                                    ;
-                                }
-
-                                #ifdef SD_PARAM_DEBUG
-                                    logger::print("set_controller_params : read line ");
-                                    logger::println(line_being_read);
-                                #endif
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
+                            {
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
                             
                             //Store the line start value so we can go back here
@@ -193,7 +329,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                         
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -226,7 +362,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -304,6 +440,7 @@
 
                     //Open File
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
                     #ifdef SD_PARAM_DEBUG
                         logger::print("set_controller_params : ");
@@ -312,7 +449,7 @@
                     #endif
 
                     //Check file exists
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {   
                         while(param_file.available())
                         {
@@ -325,30 +462,16 @@
                             #endif
 
                             //Skip to the line we need
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
-                            { 
-                                //First value in second line should be parameter number
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-
-                                    #ifdef SD_PARAM_DEBUG
-                                        logger::print("set_controller_params : Number of parameters in file = ");
-                                        logger::println(param_num_in_file);
-                                    #endif    
-                                } 
-
-                                //Keep going through the file till the next new line.  This is so it will restart if timeout happens.          
-                                while(!param_file.findUntil('\n','\n'))
-                                {
-                                    ;
-                                }
-
-                                #ifdef SD_PARAM_DEBUG
-                                    logger::print("set_controller_params : read line ");
-                                    logger::println(line_being_read);
-                                #endif
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
+                            {
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
                             
                             //Store the line start value so we can go back here
@@ -389,7 +512,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
                                             logger::println(read_val);
@@ -421,7 +544,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -500,6 +623,7 @@
 
                     //Open File
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
                     #ifdef SD_PARAM_DEBUG
                         logger::print("set_controller_params : ");
@@ -508,7 +632,7 @@
                     #endif
 
                     //Check file exists
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {   
                 
                         //Set the parameters.
@@ -525,30 +649,16 @@
                             #endif
 
                             //Skip to the line we need
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
-                            { 
-                                //First value in second line should be parameter number
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-
-                                    #ifdef SD_PARAM_DEBUG
-                                        logger::print("set_controller_params : Number of parameters in file = ");
-                                        logger::println(param_num_in_file);
-                                    #endif    
-                                } 
-
-                                //Keep going through the file till the next new line.  This is so it will restart if timeout happens.          
-                                while(!param_file.findUntil('\n','\n'))
-                                {
-                                    ;
-                                }
-
-                                #ifdef SD_PARAM_DEBUG
-                                    logger::print("set_controller_params : read line ");
-                                    logger::println(line_being_read);
-                                #endif
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
+                            {
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
                             
                             //Store the line start value so we can go back here
@@ -586,7 +696,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -620,7 +730,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -699,6 +809,7 @@
 
                     //Open File
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
                     #ifdef SD_PARAM_DEBUG
                         logger::print("set_controller_params : ");
@@ -707,7 +818,7 @@
                     #endif
 
                     //Check file exists
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {
 
                         //Set the parameters.
@@ -724,30 +835,16 @@
                             #endif
 
                             //Skip to the line we need
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
                             {
-                                //First value in second line should be parameter number
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-
-                                    #ifdef SD_PARAM_DEBUG
-                                        logger::print("set_controller_params : Number of parameters in file = ");
-                                        logger::println(param_num_in_file);
-                                    #endif    
-                                }
-
-                                //Keep going through the file till the next new line.  This is so it will restart if timeout happens.          
-                                while (!param_file.findUntil('\n', '\n'))
-                                {
-                                    ;
-                                }
-
-                                #ifdef SD_PARAM_DEBUG
-                                    logger::print("set_controller_params : read line ");
-                                    logger::println(line_being_read);
-                                #endif
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
 
                             //Store the line start value so we can go back here
@@ -785,7 +882,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -819,7 +916,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
 
                                         #ifdef SD_PARAM_DEBUG
                                             logger::print("+Value in file :\t");
@@ -875,25 +972,25 @@
                 {
                     filename = controller_parameter_filenames::arm_1[controller_id];
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {
                         uint8_t param_num = 0;
                         float read_val = 0;
                         while (param_file.available())
                         {
                             header_size = param_file.parseInt();
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
                             {
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-                                }
-                                while (!param_file.findUntil('\n', '\n'))
-                                {
-                                    ;
-                                }
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
 
                             unsigned long line_start = param_file.position();
@@ -908,7 +1005,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                     }
                                     else
                                     {
@@ -925,7 +1022,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                     }
                                     else
                                     {
@@ -960,25 +1057,25 @@
                 {
                     filename = controller_parameter_filenames::arm_2[controller_id];
                     param_file = SD.open(filename.c_str(), FILE_READ);
+                    param_file.setTimeout(10);
 
-                    if (param_file)
+                    if (param_file && param_file.available())
                     {
                         uint8_t param_num = 0;
                         float read_val = 0;
                         while (param_file.available())
                         {
                             header_size = param_file.parseInt();
-                            line_to_read = header_size + set_num;
-                            for (int line_being_read = 0; line_being_read < line_to_read; line_being_read++)
+                            if (!seek_parameter_set(
+                                    param_file, header_size, set_num,
+                                    param_num_in_file, parsed_parameters) ||
+                                !parameter_count_is_compatible(
+                                    target_joint, controller_id,
+                                    param_num_in_file))
                             {
-                                if (line_being_read == 1)
-                                {
-                                    param_num_in_file = param_file.parseInt();
-                                }
-                                while (!param_file.findUntil('\n', '\n'))
-                                {
-                                    ;
-                                }
+                                error_type = parameter_file_error(joint_id);
+                                param_file.close();
+                                return error_type;
                             }
 
                             unsigned long line_start = param_file.position();
@@ -993,7 +1090,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                     }
                                     else
                                     {
@@ -1010,7 +1107,7 @@
                                 {
                                     if (param_num_in_file > param_num)
                                     {
-                                        read_val = param_file.parseFloat();
+                                        read_val = parsed_parameters[param_num];
                                     }
                                     else
                                     {

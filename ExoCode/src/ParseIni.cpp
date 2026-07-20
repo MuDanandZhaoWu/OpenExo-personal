@@ -57,6 +57,7 @@
     }
 
 
+    // 读取config.ini文件并将解析后的数据存入config_to_send数组中
     void ini_parser(char* filename, uint8_t* config_to_send)
     {
         ConfigData data;  //Creates object to hold the key values
@@ -71,9 +72,9 @@
 
         //Setup the SPI to read the SD card
         SPI.begin();
-
+        
         if (!SD.begin(SD_SELECT))
-        {
+        {       //这里的死循环没有加大括号, 是不是错误的?
                 while (1)
                 
                 if (Serial)
@@ -106,7 +107,7 @@
             logger::print("\n");
         }
 
-        //Check the file is valid. This can be used to warn if any lines are longer than the buffer.
+        //长度校验：文件任意一行文本长度超过 buffer_len 缓冲区大小；超出则直接停机防止后续读取时缓冲区溢出、内存越界崩溃    Check the file is valid. This can be used to warn if any lines are longer than the buffer.
         if (!ini.validate(buffer, buffer_len))
         {
             if(Serial)
@@ -121,13 +122,17 @@
             while (1);
         }
           
+
+        //表示从config.ini 的 [Board] 区域读取name的值，并将这个值存入buffer缓冲区，长度不超过buffer_len
         get_section_key(ini,"Board","name",buffer,buffer_len); //Read the key.
+        //将读取到的值存入data.board_name对象中
         data.board_name = buffer;                              //Store the value
         
         // logger::print(data.board_name.c_str());
         // logger::print("\t");
         // logger::println(config_map::board_name[data.board_name]);
-
+        
+        //将读取到的值编码为uint8_t并存入config_to_send数组中，索引为board_name_idx
         config_to_send[config_defs::board_name_idx] = config_map::board_name[data.board_name];  //Encode the key to an uint8_t
         
         get_section_key(ini,"Board","version",buffer,buffer_len);
@@ -553,7 +558,7 @@
      */
     void get_section_key(IniFile ini, const char* section, const char* key, char* buffer, size_t buffer_len)
     {
-        // Always clear the output buffer so callers never see stale values if a key is missing.
+        // 如果本次读取键失败，buffer 会保留上一次读取的旧字符串，导致程序拿到错误残留值，必须每次调用先清空        Always clear the output buffer so callers never see stale values if a key is missing.
         if (buffer_len > 0) { buffer[0] = '\0'; }
 
         // Fetch a value from a key which is present.

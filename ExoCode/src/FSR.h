@@ -20,9 +20,9 @@
 #include "ExoData.h"
 
 /**
-    * @brief Handles raw (non-regressed) FSR signal. 
-    * 
-    */
+* @brief Handles raw (non-regressed) FSR signal. 
+*   在原始 ADC 数值上进行校准，未进行力矩回归换算
+*/
 class FSR
 {
 	public:
@@ -37,6 +37,15 @@ class FSR
          * 
          * @return if the calibration is continuing.
          */
+        /**
+         * @brief 执行定时初始标定，获取传感器信号的大致幅值区间（粗校准）
+         * 执行本标定时，使用者需要保持行走状态
+         * 本次标定采集到的极值数据，将用于精细化标定时统计信号跳变次数
+         *
+         * @param do_calibrate 标定是否开启的使能标志
+         *
+         * @return 布尔值，代表当前标定流程是否仍在运行
+         */
         bool calibrate(bool do_calibrate); 
 		
         /**
@@ -48,6 +57,15 @@ class FSR
          * 
          * @return if the calibration is continuing.
          */
+        /**
+         * @brief 基于多步步态均值对标定区间做精细化校准
+         * 执行该精细化校准期间，穿戴者需持续行走
+         * 采集指定次数足底压力信号由低到高的状态跳变，提取每一步的最大、最小值，优化标定上下限
+         *
+         * @param do_refinement 精细化校准功能使能标志位
+         *
+         * @return 返回布尔值，代表精细化校准流程是否仍在执行中
+         */
         bool refine_calibration(bool do_refinement);
         
         /**
@@ -57,12 +75,24 @@ class FSR
          * 
          * @return the sensor reading
          */
+        /**
+         * @brief 读取传感器采样值并执行标定换算
+         * 若精细化标定未完成，则基于粗标定区间输出校准值；
+         * 若粗标定也未执行，则直接返回传感器原始采样数据。
+         * 
+         * @return 经过标定处理后的传感器读数
+         */
         float read(); //Reads the pins and updates the data object
 		
         /**
          * @brief Uses a schmitt trigger to determine if the sensor is in contact with the ground (foot/shoe)
          * 
          * @return if the FSR is in contact with the ground
+         */
+        /**
+         * @brief 采用施密特触发器算法判断压力传感器是否接触地面（足部/鞋底着地）
+         * 
+         * @return 压力传感器当前是否处于着地状态
          */
         bool get_ground_contact();
 
@@ -92,7 +122,7 @@ class FSR
         bool _calc_ground_contact();  
 
         //Stores the sensor readings
-        float _raw_reading;             /**< Current raw sensor reading */
+        float _raw_reading;             /**< 传感器当前原始采样值       Current raw sensor reading */
 		float _calibrated_reading;      /**< Sensor reading with calibration applied */
         
         int _pin;                       /**< The pin the sensor is connected to */
@@ -108,8 +138,8 @@ class FSR
         const uint8_t _num_steps = 7;                                       /**< This is the number of steps to do the calibration_refinement */
         const float _lower_threshold_percent_calibration_refinement = .33;  /**< Lower threshold for the schmitt trigger. This can be relatively high since we don't really care about the exact moment the ground contact happens. */
         const float _upper_threshold_percent_calibration_refinement = .66;  /**< Upper threshold for the schmitt trigger */
-        bool _state;                                                        /**< Stores the signal high/low state from the schmitt trigger to find when there is a new step. */
-        bool _last_do_refinement;                                           /**< Used to track the rising edge of do_refinement, so we can reset on the first run. */
+        bool _state;        //当前FSR 状态。false 表示低状态，true 表示高状态。                                                        /**< Stores the signal high/low state from the schmitt trigger to find when there is a new step. */
+        bool _last_do_refinement;       //上一周期的精细标定触发状态                                           /**< Used to track the rising edge of do_refinement, so we can reset on the first run. */
         unsigned int _step_max_sum;                                         /**< Stores the running sum of maximums from each step so we can average. */
         uint16_t _step_max;                                                 /**< Keeps track of the max value for the step. */
         unsigned int _step_min_sum;                                         /**< Stores the running sum of minimums from each step so we can average. */
@@ -129,7 +159,7 @@ class FSR
     * @brief Handles regressed FSR signal.
     * This is used for PJMC controller and is dependent on the type of FSR being used.
     * Current regression equation is for: Interlink 
-    * 
+    * 先把 ADC 数值经过经验公式转换成 Vo，然后再对 Vo 进行相同的校准
     */
 class FSR_Regressed
 {
@@ -144,6 +174,15 @@ class FSR_Regressed
          * @param if the calibration is active.
          * 
          * @return if the calibration is continuing.
+         */
+        /**
+         * @brief 执行基于固定时长的初始标定，获取传感器信号的大致幅值区间
+         * 使用要求：使用者需保持行走状态
+         * 本次标定得到的极值区间，会在精细化标定时用于统计信号状态跳变次数
+         * 
+         * @param 标定功能是否处于开启状态
+         * 
+         * @return 标定流程是否仍在运行中
          */
         bool calibrate(bool do_calibrate); 
 		

@@ -59,6 +59,7 @@ Side::Side(bool is_left, ExoData* exo_data)
         _step_times[i] = 0;
     }
 
+    //时间戳
     _ground_strike_timestamp = 0;
     _prev_ground_strike_timestamp = 0;
     //_expected_step_duration = 0;
@@ -124,7 +125,7 @@ void Side::read_data()
     _side_data->heel_fsr = _heel_fsr.read();
     _side_data->toe_fsr = _toe_fsr.read();
 
-    //Check if a ground strike is detected
+    // 判断是否检测到足部触地落地事件       Check if a ground strike is detected
     _side_data->ground_strike = _check_ground_strike();
 
     //If a strike is detected, update the expected duration of the step 
@@ -133,6 +134,7 @@ void Side::read_data()
         _side_data->expected_step_duration = _update_expected_duration();
     }
 
+    // 检测当前是否触发足趾着地（toe-on）或足趾离地（toe-off）步态事件
     //Check if the toe on or toe off is occuring
     _side_data->toe_off = _check_toe_off();
     _side_data->toe_on = _check_toe_on();
@@ -154,7 +156,7 @@ void Side::read_data()
     _side_data->percent_stance = _calc_percent_stance();
     _side_data->percent_swing = _calc_percent_swing();
 
-    //Get the contact thesholds for the Heel and Toe FSRs
+    //冗余行为，在构造函数中这一步已经完成      Get the contact thesholds for the Heel and Toe FSRs
     _heel_fsr.get_contact_thresholds(_side_data->heel_fsr_lower_threshold, _side_data->heel_fsr_upper_threshold);
     _toe_fsr.get_contact_thresholds(_side_data->toe_fsr_lower_threshold, _side_data->toe_fsr_upper_threshold);
 
@@ -189,11 +191,12 @@ void Side::read_data()
     
 };
 
+//检查标定标志位是否已置位，若已置位则执行校准流程
 void Side::check_calibration()
 {
     if (_side_data->is_used)
     {
-        //Make sure FSR calibration is done before refinement.
+        // 判断这一侧有没有启用, 启用调用这一侧的相关校准流程       Make sure FSR calibration is done before refinement.
         if (_side_data->do_calibration_toe_fsr)
         {
             _side_data->do_calibration_toe_fsr = _toe_fsr.calibrate(_side_data->do_calibration_toe_fsr);
@@ -243,14 +246,18 @@ void Side::_check_thresholds()
     _heel_fsr.set_contact_thresholds(_side_data->heel_fsr_lower_threshold, _side_data->heel_fsr_upper_threshold);
 }
 
+//检测足部触地落地事件
 bool Side::_check_ground_strike()
 {
+    //记录FSR的上一时刻的触地状态, 用于与当前状态作比较, 以划分不同的步态事件
     _side_data->prev_heel_stance = _prev_heel_contact_state;  
     _side_data->prev_toe_stance = _prev_toe_contact_state;
 
+    //获取当前FSR的触地状态, 用于与上一时刻状态作比较, 以划分不同的步态事件
     bool heel_contact_state = _heel_fsr.get_ground_contact();
     bool toe_contact_state = _toe_fsr.get_ground_contact();
 
+    //传递当前FSR的触地状态到侧数据结构中
     _side_data->heel_stance = heel_contact_state;
     _side_data->toe_stance = toe_contact_state;
 
@@ -266,13 +273,15 @@ bool Side::_check_ground_strike()
     //Only check if in swing
     _side_data->toe_strike = toe_contact_state > _prev_toe_contact_state;
 
-    if(!_prev_heel_contact_state & !_prev_toe_contact_state) //If we were previously in swing
+    //摆动期判断
+    if(!_prev_heel_contact_state & !_prev_toe_contact_state) //判定上一时刻脚跟、脚趾全部离地，肢体处于摆动相       If we were previously in swing
     {
-        //Check for rising edge on heel and toe, toe is to account for flat foot landings
+        // 检测脚跟、脚趾传感器信号的上升沿；加入脚趾判断是为了兼容全脚掌同时落地的行走工况     Check for rising edge on heel and toe, toe is to account for flat foot landings
         if ((heel_contact_state > _prev_heel_contact_state) | (toe_contact_state > _prev_toe_contact_state))    //If either the heel or toe FSR is on the ground and it previously wasn't on the ground
         {
+            //触地状态更新为true, 更新触地时间戳
             ground_strike = true;
-            _prev_ground_strike_timestamp = _ground_strike_timestamp;
+            _prev_ground_strike_timestamp = _ground_strike_timestamp;   //当前时间戳为零(初始化结果)
             _ground_strike_timestamp = millis();
         }
     }
@@ -280,9 +289,11 @@ bool Side::_check_ground_strike()
     _prev_heel_contact_state = heel_contact_state;
     _prev_toe_contact_state = toe_contact_state;
     
+    //当脚掌一整个触地时, ground_strike为true, 但此时脚跟、脚趾的触地状态都为true, 所以在下一次循环中不会再触发ground_strike为true
     return ground_strike;
 };
 
+//检测脚趾触地落地事件
 bool Side::_check_toe_on()
 {
     bool toe_on = false;
@@ -300,6 +311,7 @@ bool Side::_check_toe_on()
     return toe_on;
 };
 
+//检测脚趾离地事件
 bool Side::_check_toe_off()
 {
     bool toe_off = false;
@@ -322,11 +334,13 @@ float Side::_calc_percent_gait()
     int timestamp = millis();
     int percent_gait = -1;
     
-    //Only calulate if the expected step duration has been established.
+    // 仅当已经得到有效的预估单步周期时长时，才执行该计算   Only calulate if the expected step duration has been established.
     if (_side_data->expected_step_duration > 0)
     {
+        //从本侧最近一次足部着地开始，当前已经完成了预计步态周期的百分之多少
+        //100 * (当前时间 - 最近着地时间) / 预计一步持续时间
         percent_gait = 100 * ((float)timestamp - _ground_strike_timestamp) / _side_data->expected_step_duration;
-        percent_gait = min(percent_gait, 100); //Set saturation.
+        percent_gait = min(percent_gait, 100); // 限制最大值        Set saturation.
         
         // logger::print("Side::_calc_percent_gait : percent_gait_x10 = ");
         // logger::print(percent_gait_x10);
@@ -335,6 +349,7 @@ float Side::_calc_percent_gait()
     return percent_gait;
 };
 
+//从本侧最近一次足部着地开始，当前已经完成了预计步态周期的百分之多少
 float Side::_calc_percent_stance()
 {
     int timestamp = millis();
@@ -377,31 +392,50 @@ float Side::_update_expected_duration()
     unsigned int step_time = _ground_strike_timestamp - _prev_ground_strike_timestamp;
     float expected_step_duration = _side_data->expected_step_duration;
 		
-    if (0 == _prev_ground_strike_timestamp) //If the prev time isn't set just return.
+    //若_prev_ground_strike_timestamp == 0, 说明目前只有第一次着地，无法计算完整周期，因此保持原值。
+    if (0 == _prev_ground_strike_timestamp) // 若上一次足部触地时间戳未赋值（仍为初始0），直接返回原有预估步长时长        If the prev time isn't set just return.
     {
         return expected_step_duration;
     }
 
     uint8_t num_uninitialized = 0;
     
-    //Check that everything is set.
+    //Check that everything is set. 当前_num_steps_avg为3
     for (int i = 0; i < _num_steps_avg; i++)
     {
+        //统计还有多少个元素没有初始化, _step_times[i]为零, num_uninitialized加1
         num_uninitialized += (_step_times[i] == 0);
     }
     
-    //Get the max and min values of the array for determining the window for expected values.
+    // 获取数组的最大值与最小值，用于划定预估步态时长的有效判定区间     Get the max and min values of the array for determining the window for expected values.
+    // max_element返回数组中指向最大值的指针，min_element返回数组中指向最小值的指针
     unsigned int* max_val = std::max_element(_step_times, _step_times + _num_steps_avg);
     unsigned int* min_val = std::min_element(_step_times, _step_times + _num_steps_avg);
     
     if  (num_uninitialized > 0)  //If all the values haven't been replaced
     {
-        //Shift all the values and insert the new one
+        //数组没填满时执行数组后移操作   Shift all the values and insert the new one
         for (int i = (_num_steps_avg - 1); i>0; i--)
         {
             _step_times[i] = _step_times[i-1];
         }
         _step_times[0] = step_time;
+
+        // The insertion above fills the final empty slot when exactly one
+        // value was uninitialized. Publish the first estimate immediately
+        // instead of waiting for an unnecessary additional ground strike.
+        // 若数组仅剩1个未填充空位，上述插入操作会将最后一个空位填满；
+        // 此时直接输出第一版预估步态周期，不必额外多等一次足部落地触发事件
+        if (num_uninitialized == 1)
+        {
+            uint32_t sum_step_times = 0;
+            for (int i = 0; i < _num_steps_avg; ++i)
+            {
+                sum_step_times += _step_times[i];
+            }
+            // 计算expected_step_duration, 预期步长时长 = 最近_num_steps_avg次步长时长的平均值       
+            expected_step_duration = sum_step_times / _num_steps_avg;
+        }
         
         // logger::print("Side::_update_expected_duration : _step_times not fully initialized- [\t");
         // for (int i = 0; i < _num_steps_avg; i++)
@@ -413,14 +447,19 @@ float Side::_update_expected_duration()
     }
 
     //Consider it a good step if the ground strike falls within a window around the expected duration. Then shift the step times and put in the new value.
+    // 判定有效步态的条件：本次足部触地时间需落在预估时长的合理区间内；
+    // 满足条件时，执行步长数组的后移操作并将新步长存入数组
+    //expected_duration_window_upper_coeff与expected_duration_window_lower_coeff分别为预估步长时长的上、下系数，定义了有效步长的判定区间，在代码中初始化为1.75和0.25
     else if ((step_time <= (_side_data->expected_duration_window_upper_coeff * *max_val)) & (step_time >= (_side_data->expected_duration_window_lower_coeff * *min_val))) // and (armed_time > ARMED_DURATION_PERCENT * self.expected_duration)): # a better check can be used.  If the person hasn't stopped or the step is good update the vector.  
     {
         int sum_step_times = step_time;
         for (int i = (_num_steps_avg - 1); i>0; i--)
         {
             sum_step_times += _step_times[i-1];
+            //数组后移操作, 舍弃最早的步长时长   Shift all the values and insert the new one
             _step_times[i] = _step_times[i-1];
         }
+        //向数组中插入最新的步长时长
         _step_times[0] = step_time;
         
         expected_step_duration = sum_step_times / _num_steps_avg;  //Average to the nearest ms
@@ -553,12 +592,17 @@ float Side::_update_expected_swing_duration()
     return expected_swing_duration;
 };
 
+// 清除步长估计, 重置整套完整步态周期预估的缓存数据
 void Side::clear_step_time_estimate()
 {
     for (int i = 0; i<_num_steps_avg; i++)
     {
         _step_times[i] = 0;
     }
+    _ground_strike_timestamp = 0;
+    _prev_ground_strike_timestamp = 0;
+    _side_data->expected_step_duration = -1.0f;
+    _side_data->percent_gait = -1.0f;
 };
 
 /**

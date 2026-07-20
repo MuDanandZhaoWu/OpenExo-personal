@@ -149,50 +149,75 @@ namespace ble_handlers
 {
     inline static void start(ExoData* data, BleMessage* msg)
     {
-        //Start the trial (ie Enable motors and begin streaming data). If the joint is used; enable the motor, and set the controller to zero torque
-        data->for_each_joint(
-            
-            // This is a lamda or anonymous function, see https://www.learncpp.com/cpp-tutorial/introduction-to-lambdas-anonymous-functions/
-            [](JointData* j_data, float* args)
+        const uint16_t current_status = data->get_status();
+        UARTHandler* uart_handler = UARTHandler::get_instance();
+
+        if ((current_status & status_defs::messages::error) != 0)
+        {
+            // Starting must never clear or bypass a locally latched error.
+            data->start_request_pending = false;
+            data->start_request_after_stop = false;
+            return;
+        }
+
+        if (data->stop_request_pending)
+        {
+            // Establish an acknowledged off boundary before accepting a new
+            // start generation. Reuse the same token so duplicate stop ACKs
+            // cannot be mistaken for the queued Start.
+            data->start_request_after_stop = true;
+            UART_status_requests::send(
+                uart_handler, status_defs::messages::trial_off,
+                data->pending_stop_token);
+            return;
+        }
+
+        if (current_status == status_defs::messages::trial_on)
+        {
+            // An already confirmed trial may use Start as an idempotent
+            // enable retry/resume, but must not restart FSR calibration.
+            data->for_each_joint([](JointData* j_data, float* args)
             {
+                (void)args;
                 if (j_data->is_used)
                 {
-                    j_data->motor.enabled = 1;
+                    j_data->motor.enabled = true;
                 }
-                return;
-            }
-        );
-
-        //Set the data status to running
-        data->set_status(status_defs::messages::trial_on);
-
-        //Send status update
-        UARTHandler* uart_handler = UARTHandler::get_instance();
-        UART_msg_t tx_msg;
-        tx_msg.command = UART_command_names::update_status;
-        tx_msg.joint_id = 0;
-        tx_msg.data[(uint8_t)UART_command_enums::status::STATUS] = data->get_status();
-        tx_msg.len = (uint8_t)UART_command_enums::status::LENGTH;
-        uart_handler->UART_msg(tx_msg);
-
-        delayMicroseconds(10);
-
-        //Send motor enable update
-        tx_msg.command = UART_command_names::update_motor_enable_disable;
-        tx_msg.joint_id = 0;
-        tx_msg.data[(uint8_t)UART_command_enums::motor_enable_disable::ENABLE_DISABLE] = 1;
-        tx_msg.len = (uint8_t)UART_command_enums::motor_enable_disable::LENGTH;
-        uart_handler->UART_msg(tx_msg);
-
-        delayMicroseconds(10);
-
-        //Send FSR Calibration and Refinement
-        tx_msg.command = UART_command_names::update_cal_fsr;
-        tx_msg.len = 0;
-        uart_handler->UART_msg(tx_msg);
+            });
+            data->user_paused = false;
+            UART_msg_t enable_msg = {};
+            enable_msg.command =
+                UART_command_names::update_motor_enable_disable;
+            enable_msg.joint_id = 0;
+            enable_msg.data[(uint8_t)UART_command_enums::motor_enable_disable::ENABLE_DISABLE] = 1.0f;
+            enable_msg.len =
+                (uint8_t)UART_command_enums::motor_enable_disable::LENGTH;
+            uart_handler->UART_msg(enable_msg);
+            return;
+        }
+        // Phase 1: request a validated Teensy transition only. Local status,
+        // motor enable, and FSR calibration are committed after its ACK.
+        if (!data->start_request_pending)
+        {
+            data->start_request_pending = true;
+            data->pending_start_token =
+                UART_status_requests::next_token(data);
+        }
+        UART_status_requests::send(
+            uart_handler, status_defs::messages::trial_on,
+            data->pending_start_token);
     }
     inline static void stop(ExoData* data, BleMessage* msg)
     {
+        data->start_request_pending = false;
+        data->start_request_after_stop = false;
+        data->start_fsr_calibration_sent = false;
+        if (!data->stop_request_pending)
+        {
+            data->stop_request_pending = true;
+            data->pending_stop_token =
+                UART_status_requests::next_token(data);
+        }
         //Stop the trial (inverse of start) & send trial summary data (step information)
         data->for_each_joint(
             
@@ -212,16 +237,14 @@ namespace ble_handlers
 
         //Send status update
         UARTHandler* uart_handler = UARTHandler::get_instance();
-        UART_msg_t tx_msg;
-        tx_msg.command = UART_command_names::update_status;
-        tx_msg.joint_id = 0;
-        tx_msg.data[(uint8_t)UART_command_enums::status::STATUS] = data->get_status();
-        tx_msg.len = (uint8_t)UART_command_enums::status::LENGTH;
-        uart_handler->UART_msg(tx_msg);
+        UART_status_requests::send(
+            uart_handler, status_defs::messages::trial_off,
+            data->pending_stop_token);
 
         delayMicroseconds(100);
 
         //Send motor enable update
+        UART_msg_t tx_msg = {};
         tx_msg.command = UART_command_names::update_motor_enable_disable;
         tx_msg.joint_id = 0;
         tx_msg.data[(uint8_t)UART_command_enums::motor_enable_disable::ENABLE_DISABLE] = 0;
