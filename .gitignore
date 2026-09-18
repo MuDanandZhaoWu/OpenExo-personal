@@ -8,3 +8,6 @@ ExoCode/src/.vs
 ExoCode/.vscode
 */.vs
 Libraries/ArduinoBLE/extras/arduino-ble-parser.py
+
+# Local nested project scratch copy
+/openexo_final_test/
